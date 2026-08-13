@@ -20,6 +20,7 @@ import { NConfigProvider, NDialogProvider, NMessageProvider, darkTheme, zhCN } f
               </div>
               <div class="nav-group">
                 <span>管理控制台</span>
+                <RouterLink to="/admin/demo-state">演示数据</RouterLink>
                 <RouterLink to="/admin/evaluations">对照评测</RouterLink>
                 <RouterLink to="/admin/skills">Skill 版本</RouterLink>
                 <RouterLink to="/admin/releases">影子与发布</RouterLink>

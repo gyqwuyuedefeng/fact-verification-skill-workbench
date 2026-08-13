@@ -2,19 +2,52 @@
 import { onMounted, ref, watch } from 'vue'
 
 import { skillVersionLabel, statusLabel } from '../presentation/labels'
+import { useDemoStore } from '../stores/demo'
 import { useSkillStore } from '../stores/skill'
 import type { SkillReference } from '../types/skill'
 
 const store = useSkillStore()
+const demoStore = useDemoStore()
 const changeSummary = ref('修复主体歧义或已知失败样本')
 const skillMarkdown = ref('')
 const referencesJson = ref('[]')
 const targetVersionId = ref('')
 const baseVersionId = ref('')
+const selectedPresetId = ref('')
 
 onMounted(() => {
   store.load().catch(() => undefined)
 })
+
+watch(
+  () => store.selectedContent?.editable,
+  (editable) => {
+    selectedPresetId.value = ''
+    if (editable === true) void demoStore.loadSkillPresets()
+  },
+  { immediate: true },
+)
+
+function presetChangeSummary(presetId: string): string {
+  if (presetId === '01-initial') return '载入初始稳定版预置，作为演示基线'
+  if (presetId === '02-improved') return '载入优化候选版预置，展示改进后的评测结果'
+  return '载入回归失败版预置，展示门禁阻断与回滚场景'
+}
+
+function presetPhase(presetId: string): string {
+  if (presetId === '01-initial') return '阶段一：稳定基线'
+  if (presetId === '02-improved') return '阶段二：优化候选'
+  return '阶段三：回归失败'
+}
+
+function applySkillPreset() {
+  const preset = demoStore.skillPresets.find((item) => item.id === selectedPresetId.value)
+  if (!preset) return
+  if (!globalThis.confirm(`确认加载“${preset.label}”？这只会替换本地编辑器内容，仍需手工保存和冻结。`)) return
+  skillMarkdown.value = preset.skillMarkdown
+  referencesJson.value = JSON.stringify(preset.references, null, 2)
+  changeSummary.value = presetChangeSummary(preset.id)
+}
 
 function loadEditorFromStore() {
   const content = store.selectedContent
@@ -99,6 +132,27 @@ watch([targetVersionId, baseVersionId], ([targetVersionId, baseVersionId]) => {
         </div>
         <label class="field-label">变更说明</label>
         <input v-model="changeSummary" class="text-input" maxlength="2000" :readonly="!store.currentDraft" />
+        <template v-if="store.selectedContent?.editable === true">
+          <label class="field-label" for="skill-preset">加载预置内容（仅本地编辑器）</label>
+          <div class="preset-controls">
+            <select id="skill-preset" v-model="selectedPresetId" class="text-input" data-test="skill-preset" :disabled="demoStore.presetsBusy">
+              <option value="">{{ demoStore.presetsBusy ? '正在读取预置…' : '请选择三阶段预置' }}</option>
+              <option v-for="preset in demoStore.skillPresets" :key="preset.id" :value="preset.id">{{ preset.label }} · {{ presetPhase(preset.id) }}</option>
+            </select>
+            <button class="secondary-action" data-test="apply-skill-preset" :disabled="!selectedPresetId || demoStore.presetsBusy" @click="applySkillPreset">加载到本地</button>
+          </div>
+          <small class="preset-hint">仅替换 Markdown、两份 references 和变更说明；不会自动保存或冻结。</small>
+          <p v-if="demoStore.error" class="error-message">{{ demoStore.error }}</p>
+          <button
+            v-if="demoStore.error"
+            class="secondary-action preset-retry"
+            data-test="retry-skill-presets"
+            :disabled="demoStore.presetsBusy"
+            @click="demoStore.loadSkillPresets"
+          >
+            {{ demoStore.presetsBusy ? '正在重试…' : '重试读取预置' }}
+          </button>
+        </template>
         <label class="field-label">Skill 主文件（SKILL.md）</label>
         <textarea
           v-model="skillMarkdown"

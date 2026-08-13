@@ -3,6 +3,7 @@ import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
 
 import SkillLabPage from '../SkillLabPage.vue'
+import { useDemoStore } from '../../stores/demo'
 import { useSkillStore } from '../../stores/skill'
 
 function deferred<T>() {
@@ -427,6 +428,104 @@ describe('SkillLabPage', () => {
 
     expect(store.comparison).toBeNull()
     expect(store.error).toContain('读取失败')
+    vi.unstubAllGlobals()
+  })
+
+  it('仅 DRAFT 可加载预置，确认后只替换本地编辑器内容', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useSkillStore()
+    const demoStore = useDemoStore()
+    store.currentDraft = {
+      id: 'draft-preset', skillKey: 'company-material-fact-check', version: null, parentVersionId: null,
+      status: 'DRAFT', contentHash: null, changeSummary: '原始说明',
+      createdAt: '2026-08-13T00:00:00Z', frozenAt: null,
+    }
+    store.selectedContent = {
+      id: 'draft-preset', parentVersionId: null, status: 'DRAFT', editable: true,
+      skillMarkdown: '# 原始 Skill', references: [{ path: 'references/old.md', content: '旧资料' }],
+      changeSummary: '原始说明',
+    }
+    vi.spyOn(store, 'load').mockResolvedValue()
+    const saveDraft = vi.spyOn(store, 'saveDraft').mockResolvedValue()
+    const freezeCurrent = vi.spyOn(store, 'freezeCurrent').mockResolvedValue()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response([
+      {
+        id: '01-initial', label: '初始稳定版', skillName: 'company-material-fact-check',
+        skillMarkdown: '# 初始 Skill', references: [],
+      },
+      {
+        id: '02-improved', label: '优化候选版', skillName: 'company-material-fact-check',
+        skillMarkdown: '# 优化后的 Skill', changeSummary: '减少主体识别歧义',
+        references: [
+          { path: 'references/claim-normalization.md', content: '主张规则' },
+          { path: 'references/evidence-rules.md', content: '证据规则' },
+        ],
+      },
+      {
+        id: '03-regression', label: '回归失败版', skillName: 'company-material-fact-check',
+        skillMarkdown: '# 回归 Skill', references: [],
+      },
+    ])))
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+    await vi.waitFor(() => expect(demoStore.skillPresets).toHaveLength(3))
+    expect(wrapper.text()).toContain('初始稳定版 · 阶段一：稳定基线')
+    expect(wrapper.text()).toContain('优化候选版 · 阶段二：优化候选')
+    expect(wrapper.text()).toContain('回归失败版 · 阶段三：回归失败')
+    await wrapper.get('[data-test="skill-preset"]').setValue('02-improved')
+    await wrapper.get('[data-test="apply-skill-preset"]').trigger('click')
+
+    expect(confirm).toHaveBeenCalled()
+    expect(wrapper.findAll('textarea.code-editor')[0]?.element.value).toBe('# 优化后的 Skill')
+    expect(wrapper.findAll('textarea.code-editor')[1]?.element.value).toContain('claim-normalization.md')
+    expect(wrapper.find('input.text-input').element.value).toBe('载入优化候选版预置，展示改进后的评测结果')
+    expect(saveDraft).not.toHaveBeenCalled()
+    expect(freezeCurrent).not.toHaveBeenCalled()
+    vi.unstubAllGlobals()
+  })
+
+  it('冻结版本不展示预置加载控件', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useSkillStore()
+    store.selectedContent = {
+      id: 'stable-preset', parentVersionId: null, status: 'STABLE', editable: false,
+      skillMarkdown: '# 冻结内容', references: [], changeSummary: '冻结说明',
+    }
+    vi.spyOn(store, 'load').mockResolvedValue()
+
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+
+    expect(wrapper.find('[data-test="skill-preset"]').exists()).toBe(false)
+  })
+
+  it('预置读取失败时显示中文原因，并可由管理员重试', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useSkillStore()
+    store.currentDraft = {
+      id: 'draft-preset-error', skillKey: 'company-material-fact-check', version: null, parentVersionId: null,
+      status: 'DRAFT', contentHash: null, changeSummary: '原始说明',
+      createdAt: '2026-08-13T00:00:00Z', frozenAt: null,
+    }
+    store.selectedContent = {
+      id: 'draft-preset-error', parentVersionId: null, status: 'DRAFT', editable: true,
+      skillMarkdown: '# 原始 Skill', references: [], changeSummary: '原始说明',
+    }
+    vi.spyOn(store, 'load').mockResolvedValue()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response({ message: '预置服务暂不可用' }, false))
+      .mockResolvedValueOnce(response([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+    await vi.waitFor(() => expect(wrapper.text()).toContain('预置服务暂不可用'))
+    await wrapper.get('[data-test="retry-skill-presets"]').trigger('click')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(2))
+
+    expect(wrapper.text()).not.toContain('预置服务暂不可用')
     vi.unstubAllGlobals()
   })
 })

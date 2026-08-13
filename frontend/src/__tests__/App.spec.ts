@@ -6,7 +6,7 @@ import { describe, expect, it } from 'vitest'
 import App from '../App.vue'
 
 describe('App', () => {
-  it('把普通对话入口与三个管理员工作台入口清楚分组', async () => {
+  it('把普通对话入口与演示数据和三个管理员工作台入口清楚分组', async () => {
     const router = createRouter({
       history: createMemoryHistory(),
       routes: [
@@ -15,6 +15,7 @@ describe('App', () => {
         { path: '/admin/evaluations', component: { template: '<div>评测</div>' } },
         { path: '/admin/skills', component: { template: '<div>版本</div>' } },
         { path: '/admin/releases', component: { template: '<div>发布</div>' } },
+        { path: '/admin/demo-state', component: { template: '<div>演示数据</div>' } },
       ],
     })
     await router.push('/')
@@ -28,6 +29,7 @@ describe('App', () => {
     expect(wrapper.text()).toContain('管理控制台')
     expect(wrapper.findAll('.main-nav a').map((link) => link.text())).toEqual([
       '事实核验对话',
+      '演示数据',
       '对照评测',
       'Skill 版本',
       '影子与发布',

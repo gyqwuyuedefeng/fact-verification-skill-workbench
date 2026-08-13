@@ -1327,9 +1327,126 @@ input {
   line-height: 1.65;
 }
 
+.demo-path-grid,
+.demo-transfer-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 18px;
+  margin-top: 30px;
+}
+
+.demo-transfer-grid {
+  margin-top: 18px;
+}
+
+.demo-step-list {
+  display: grid;
+  gap: 0;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.demo-step-list li {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 35px;
+  color: #9db0c1;
+  border-bottom: 1px solid rgb(144 170 194 / 9%);
+  font-size: 12px;
+}
+
+.demo-step-list span {
+  color: #48d6c7;
+  font: 600 10px/1 'JetBrains Mono', monospace;
+}
+
+.destructive-hint,
+.preset-hint {
+  display: block;
+  margin-top: 10px;
+  color: #d8a76f;
+  font-size: 11px;
+  line-height: 1.6;
+}
+
+.notice-copy {
+  min-height: 65px;
+  color: #9cafc0;
+  font-size: 12px;
+  line-height: 1.75;
+}
+
+.warning-copy {
+  color: #e3b67d;
+}
+
+.demo-state-grid {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 14px;
+  margin-top: 18px;
+}
+
+.demo-state-grid article {
+  padding: 16px;
+  background: #071322;
+}
+
+.demo-state-grid dl {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 9px 12px;
+  margin: 14px 0 0;
+  color: #8499ad;
+  font-size: 11px;
+}
+
+.demo-state-grid dt,
+.demo-state-grid dd {
+  margin: 0;
+}
+
+.demo-state-grid dd {
+  color: #e3f2f7;
+  font-family: 'JetBrains Mono', monospace;
+}
+
+.demo-state-grid .state-ok {
+  color: #6fe6d7;
+}
+
+.demo-state-grid .state-alert {
+  color: #ff9c86;
+}
+
+.preset-controls {
+  display: flex;
+  gap: 10px;
+  align-items: center;
+}
+
+.preset-controls .secondary-action {
+  flex: none;
+  margin-top: 0;
+  white-space: nowrap;
+}
+
+.preset-retry {
+  margin-top: 10px;
+}
+
 @media (max-width: 900px) {
   .comparison-controls,
-  .comparison-result-grid {
+  .comparison-result-grid,
+  .demo-path-grid,
+  .demo-transfer-grid,
+  .demo-state-grid {
     grid-template-columns: 1fr;
+  }
+
+  .preset-controls {
+    display: grid;
   }
 }
