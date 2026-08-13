@@ -311,6 +311,7 @@ describe('SkillLabPage', () => {
     const compare = vi.spyOn(store, 'generateComparison').mockResolvedValue()
 
     const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+    expect(wrapper.find('[data-test="base-version"]').text()).toContain('请选择上一版或当前稳定版（STABLE）')
     await wrapper.find('[data-test="target-version"]').setValue('candidate-2')
     await wrapper.find('[data-test="base-version"]').setValue('stable-1')
     await wrapper.find('[data-test="generate-change-summary"]').trigger('click')

@@ -197,7 +197,7 @@ watch([targetVersionId, baseVersionId], ([targetVersionId, baseVersionId]) => {
         <label>
           <span>基准版本</span>
           <select v-model="baseVersionId" class="text-input" data-test="base-version">
-            <option value="">请选择上一版或当前 Stable</option>
+            <option value="">请选择上一版或当前稳定版（STABLE）</option>
             <option v-for="version in store.versions.filter((item) => item.status !== 'DRAFT')" :key="version.id" :value="version.id">{{ skillVersionLabel(version) }}</option>
           </select>
         </label>
