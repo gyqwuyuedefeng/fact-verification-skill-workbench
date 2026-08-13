@@ -7,8 +7,8 @@ import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
 import org.springframework.stereotype.Service;
-import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.PlatformTransactionManager;
+import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -134,6 +134,24 @@ public class DemoStateService {
         boolean storageBlank = storageSwap.blankState().values().stream().allMatch(Boolean::booleanValue);
         if (!tableBlank || !storageBlank) {
             throw new ServiceException("DEMO_STATE_NOT_BLANK", "当前比赛数据或运行目录不为空，不能导入快照");
+        }
+    }
+
+    /**
+     * 导出前确认所有会继续写表或附件的核验、评测均已结束。
+     *
+     * <p>这是只读快照的一致性门禁，不改变任何任务状态；调用方必须在读取第一张表前执行。
+     */
+    public void requireQuiescentForSnapshotExport() {
+        if (repository.hasActiveEvaluations() || repository.hasActiveVerificationWork()) {
+            throw new ServiceException("DEMO_SNAPSHOT_ACTIVE_WORK", "仍有运行中的核验或评测，不能导出快照");
+        }
+    }
+
+    /** 校验快照导入专用确认短语，防止复用清空短语或普通上传请求误触破坏性恢复。 */
+    public void requireImportConfirmationPhrase(String confirmationPhrase) {
+        if (!"导入快照".equals(confirmationPhrase)) {
+            throw new ServiceException("DEMO_SNAPSHOT_CONFIRMATION_INVALID", "确认短语必须为“导入快照”");
         }
     }
 

@@ -1,8 +1,11 @@
 package com.hsmap.factverification.demo;
 
+import java.io.IOException;
 import java.util.LinkedHashMap;
 import java.util.Map;
+import java.util.UUID;
 import org.springframework.jdbc.core.JdbcTemplate;
+import org.springframework.jdbc.core.RowCallbackHandler;
 import org.springframework.stereotype.Repository;
 
 /**
@@ -69,6 +72,51 @@ public class DemoStateRepository {
     }
 
     /**
+     * 按主键稳定顺序流式读取指定白名单表的 PostgreSQL JSONB 复合行。
+     *
+     * <p>查询字符串只能从 SnapshotTable 构造；消费端每次只持有一行，避免把完整数据库快照先聚合到内存。
+     */
+    public void exportRows(SnapshotTable table, JsonRowConsumer consumer) throws IOException {
+        String sql = "select to_jsonb(row_value)::text from test." + table.tableName() + " row_value order by id";
+        try {
+            jdbcTemplate.query(sql, (RowCallbackHandler) resultSet -> {
+                try {
+                    consumer.accept(resultSet.getString(1));
+                } catch (IOException exception) {
+                    throw new JsonRowAccessException(exception);
+                }
+            });
+        } catch (JsonRowAccessException exception) {
+            throw exception.getCause();
+        }
+    }
+
+    /**
+     * 将一行已校验 JSON 回填到枚举指定的 PostgreSQL 复合行类型。
+     *
+     * <p>jsonb_populate_record 让 UUID、timestamptz、JSONB 与可空字段由数据库按真实迁移类型恢复，避免 Java 侧猜测列类型。
+     */
+    public void insertRow(SnapshotTable table, String json) {
+        String sql =
+                "insert into test." + table.tableName() + " select imported.* from jsonb_populate_record(null::test."
+                        + table.tableName() + ", ?::jsonb) imported";
+        jdbcTemplate.update(sql, json);
+    }
+
+    /**
+     * 在 evaluation_run 已完成导入后恢复 Skill 的自引用与注册评测引用。
+     *
+     * <p>两个目标 UUID 可为空；更新对象只能是已由固定 Skill JSONL 插入的主键。
+     */
+    public void restoreSkillReferences(UUID id, UUID parentVersionId, UUID registeredEvaluationId) {
+        jdbcTemplate.update(
+                "update test.skill_version set parent_version_id = ?, registered_evaluation_id = ? where id = ?",
+                parentVersionId,
+                registeredEvaluationId,
+                id);
+    }
+
+    /**
      * 在同一数据库事务中按既有外键顺序清理比赛数据。
      *
      * <p>skill_version 在删除前先解除自引用和注册评测引用，随后才能清理版本及其父级 evaluation_run；顺序不得由调用方改变。
@@ -82,5 +130,23 @@ public class DemoStateRepository {
         jdbcTemplate.update("update test.skill_version set parent_version_id = null, registered_evaluation_id = null");
         jdbcTemplate.update("delete from test.skill_version");
         jdbcTemplate.update("delete from test.evaluation_run");
+    }
+
+    /** 允许流式 ZIP 写入把受检 IOException 保留到仓储调用边界。 */
+    @FunctionalInterface
+    public interface JsonRowConsumer {
+        void accept(String json) throws IOException;
+    }
+
+    /** 在 JdbcTemplate 回调中短路传播受检 IOException，外层会还原原始异常。 */
+    private static final class JsonRowAccessException extends RuntimeException {
+        private JsonRowAccessException(IOException cause) {
+            super(cause);
+        }
+
+        @Override
+        public synchronized IOException getCause() {
+            return (IOException) super.getCause();
+        }
     }
 }

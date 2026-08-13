@@ -3,8 +3,12 @@ package com.hsmap.factverification.demo;
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
 import static org.mockito.Mockito.verify;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.post;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.content;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.header;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.request;
 import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
 
 import com.hsmap.factverification.demo.api.DemoStateController;
@@ -15,6 +19,7 @@ import org.junit.jupiter.api.Test;
 import org.springframework.boot.test.context.runner.ApplicationContextRunner;
 import org.springframework.http.MediaType;
 import org.springframework.test.web.servlet.MockMvc;
+import org.springframework.test.web.servlet.MvcResult;
 import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 
 /**
@@ -26,13 +31,15 @@ import org.springframework.test.web.servlet.setup.MockMvcBuilders;
 class DemoStateApiTest {
 
     private DemoStateService service;
+    private SnapshotArchiveService snapshots;
     private MockMvc mvc;
 
     /** 初始化控制器的独立 HTTP 测试环境，避免条件装配测试依赖完整 Web 应用。 */
     @BeforeEach
     void setUp() {
         service = mock(DemoStateService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new DemoStateController(service))
+        snapshots = mock(SnapshotArchiveService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new DemoStateController(service, snapshots))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -58,6 +65,43 @@ class DemoStateApiTest {
     }
 
     /**
+     * 测试场景：管理端流式下载快照并以原始 application/zip 请求体导入。
+     * 前置条件：导出服务向响应流写入少量 ZIP 标识字节，导入携带固定 X-Confirmation-Phrase。
+     * 期望结果：下载响应含附件文件名和 ZIP 媒体类型，上传字节与确认语原样交给快照服务。
+     * 断言重点：接口不使用 multipart，且仍位于 Task 4 双条件控制器内。
+     */
+    @Test
+    void exposesStreamingExportAndRawZipImportEndpoints() throws Exception {
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    java.io.OutputStream output = invocation.getArgument(0);
+                    output.write("zip".getBytes(java.nio.charset.StandardCharsets.UTF_8));
+                    return null;
+                })
+                .when(snapshots)
+                .exportTo(org.mockito.ArgumentMatchers.any());
+        org.mockito.Mockito.when(service.status()).thenReturn(new DemoStateView(Map.of(), Map.of()));
+
+        MvcResult export = mvc.perform(get("/api/admin/demo-state/export"))
+                .andExpect(request().asyncStarted())
+                .andReturn();
+        mvc.perform(asyncDispatch(export))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/zip"))
+                .andExpect(header().string(
+                                "Content-Disposition", org.hamcrest.Matchers.containsString("workbench-state-")))
+                .andExpect(content().bytes("zip".getBytes(java.nio.charset.StandardCharsets.UTF_8)));
+
+        byte[] requestBody = "raw-zip".getBytes(java.nio.charset.StandardCharsets.UTF_8);
+        mvc.perform(post("/api/admin/demo-state/import")
+                        .header("X-Confirmation-Phrase", "导入快照")
+                        .contentType("application/zip")
+                        .content(requestBody))
+                .andExpect(status().isOk());
+
+        verify(snapshots).importFrom(org.mockito.ArgumentMatchers.any(), eq("导入快照"));
+    }
+
+    /**
      * 测试场景：非 test profile 即使错误地开启配置，也尝试加载演示管理控制器。
      * 前置条件：上下文只注册控制器及其服务 Mock，不创建业务基础设施。
      * 期望结果：Profile 条件阻止控制器 Bean 装配。
@@ -65,9 +109,8 @@ class DemoStateApiTest {
      */
     @Test
     void doesNotAssembleControllerOutsideTestProfile() {
-        contextRunner("prod", true)
-                .run(context -> org.assertj.core.api.Assertions.assertThat(context)
-                        .doesNotHaveBean(DemoStateController.class));
+        contextRunner("prod", true).run(context -> org.assertj.core.api.Assertions.assertThat(context)
+                .doesNotHaveBean(DemoStateController.class));
     }
 
     /**
@@ -78,9 +121,8 @@ class DemoStateApiTest {
      */
     @Test
     void doesNotAssembleControllerWhenFeatureSwitchIsDisabled() {
-        contextRunner("test", false)
-                .run(context -> org.assertj.core.api.Assertions.assertThat(context)
-                        .doesNotHaveBean(DemoStateController.class));
+        contextRunner("test", false).run(context -> org.assertj.core.api.Assertions.assertThat(context)
+                .doesNotHaveBean(DemoStateController.class));
     }
 
     /**
@@ -91,8 +133,8 @@ class DemoStateApiTest {
      */
     @Test
     void assemblesControllerWhenTestProfileAndFeatureSwitchAreEnabled() {
-        contextRunner("test", true)
-                .run(context -> org.assertj.core.api.Assertions.assertThat(context).hasSingleBean(DemoStateController.class));
+        contextRunner("test", true).run(context -> org.assertj.core.api.Assertions.assertThat(context)
+                .hasSingleBean(DemoStateController.class));
     }
 
     /** 为条件测试构造最小上下文，显式提供控制器的唯一构造器依赖。 */
@@ -100,6 +142,7 @@ class DemoStateApiTest {
         return new ApplicationContextRunner()
                 .withUserConfiguration(DemoStateController.class)
                 .withBean(DemoStateService.class, () -> mock(DemoStateService.class))
+                .withBean(SnapshotArchiveService.class, () -> mock(SnapshotArchiveService.class))
                 .withInitializer(context -> context.getEnvironment().setActiveProfiles(profile))
                 .withPropertyValues("workbench.demo-admin.enabled=" + enabled);
     }
