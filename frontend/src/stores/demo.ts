@@ -8,10 +8,36 @@ import {
   importSnapshot,
   resetDemoState,
 } from '../api/demo'
-import type { DemoState, SkillPreset } from '../types/demo'
+import {
+  DEMO_DIRECTORY_KEYS,
+  DEMO_TABLE_KEYS,
+  type DemoState,
+  type SkillPreset,
+} from '../types/demo'
 
 function errorMessage(error: unknown, fallback: string): string {
   return error instanceof Error ? error.message : fallback
+}
+
+/** 只接受精确键集合，避免空对象、缺键或未知键被 every() 误判为可安全导入。 */
+function hasExactKeys(value: unknown, expectedKeys: readonly string[]): value is Record<string, unknown> {
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) return false
+  const keys = Object.keys(value)
+  return keys.length === expectedKeys.length
+    && expectedKeys.every((key) => Object.prototype.hasOwnProperty.call(value, key))
+}
+
+/** 来自 HTTP 的 JSON 在运行时仍需校验，导入快照必须对任何异常状态失败关闭。 */
+function isDemoStateContractValid(demoState: DemoState): boolean {
+  const tableCounts: unknown = demoState.tableCounts
+  const storageEmpty: unknown = demoState.storageEmpty
+  return hasExactKeys(tableCounts, DEMO_TABLE_KEYS)
+    && hasExactKeys(storageEmpty, DEMO_DIRECTORY_KEYS)
+    && DEMO_TABLE_KEYS.every((key) => {
+      const count = tableCounts[key]
+      return typeof count === 'number' && Number.isFinite(count) && Number.isInteger(count) && count >= 0
+    })
+    && DEMO_DIRECTORY_KEYS.every((key) => typeof storageEmpty[key] === 'boolean')
 }
 
 export const useDemoStore = defineStore('demo', {
@@ -23,11 +49,15 @@ export const useDemoStore = defineStore('demo', {
     error: null as string | null,
   }),
   getters: {
+    /** 状态合同异常时页面仍可提示，但所有自定义导入必须失败关闭。 */
+    isStateContractValid(state): boolean {
+      return state.state !== null && isDemoStateContractValid(state.state)
+    },
     /** 自定义快照只能在七表与三个受管目录均为空时导入。 */
     isBlank(state): boolean {
-      if (!state.state) return false
-      return Object.values(state.state.tableCounts).every((count) => count === 0)
-        && Object.values(state.state.storageEmpty).every(Boolean)
+      if (!state.state || !isDemoStateContractValid(state.state)) return false
+      return DEMO_TABLE_KEYS.every((key) => state.state!.tableCounts[key] === 0)
+        && DEMO_DIRECTORY_KEYS.every((key) => state.state!.storageEmpty[key] === true)
     },
   },
   actions: {

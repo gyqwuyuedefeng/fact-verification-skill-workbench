@@ -110,6 +110,42 @@ describe('DemoStatePage', () => {
     expect(wrapper.get('[data-test="import-snapshot"]').attributes('disabled')).toBeDefined()
   })
 
+  it.each([
+    ['缺少固定表', () => {
+      const counts = { ...tableCounts }
+      delete (counts as Record<string, number>).claim
+      return counts
+    }],
+    ['空表集合', () => ({})],
+    ['含未知表', () => ({ ...tableCounts, unexpected_table: 0 })],
+    ['计数为负数', () => ({ ...tableCounts, claim: -1 })],
+    ['目录状态不是 boolean', () => tableCounts, () => ({ uploads: 'true', 'skill-snapshots': true, 'skill-runtime': true })],
+  ])('状态合同%s时拒绝自定义导入', async (_name, countsFactory, directoriesFactory = () => state().storageEmpty) => {
+    const counts = countsFactory()
+    const directories = directoriesFactory()
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ tableCounts: counts, storageEmpty: directories })))
+    const wrapper = mountPage()
+    const store = useDemoStore()
+    await vi.waitFor(() => expect(store.busy).toBe(false))
+
+    expect(store.isBlank).toBe(false)
+    expect(wrapper.text()).toContain('状态合同异常/无法安全导入')
+    expect(wrapper.get('[data-test="import-snapshot"]').attributes('disabled')).toBeDefined()
+  })
+
+  it('固定七表和三个目录均合法且为空时才允许自定义 ZIP 导入', async () => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(state())))
+    const wrapper = mountPage()
+    const store = useDemoStore()
+    await vi.waitFor(() => expect(store.busy).toBe(false))
+
+    await selectZip(wrapper)
+
+    expect(store.isBlank).toBe(true)
+    expect(wrapper.text()).not.toContain('状态合同异常/无法安全导入')
+    expect(wrapper.get('[data-test="import-snapshot"]').attributes('disabled')).toBeUndefined()
+  })
+
   it('导入成功后通过真实 store action 重新加载状态', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(state()))

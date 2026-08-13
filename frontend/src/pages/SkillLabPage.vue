@@ -20,10 +20,10 @@ onMounted(() => {
 })
 
 watch(
-  () => store.selectedContent?.editable,
-  (editable) => {
+  [() => store.selectedVersionId, () => store.selectedContent?.id],
+  () => {
     selectedPresetId.value = ''
-    if (editable === true) void demoStore.loadSkillPresets()
+    if (store.selectedContent?.editable === true) void demoStore.loadSkillPresets()
   },
   { immediate: true },
 )

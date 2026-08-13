@@ -2,11 +2,17 @@
 import { onMounted, ref } from 'vue'
 
 import { useDemoStore } from '../stores/demo'
+import {
+  DEMO_DIRECTORY_KEYS,
+  DEMO_TABLE_KEYS,
+  type DemoDirectoryKey,
+  type DemoTableKey,
+} from '../types/demo'
 
 const store = useDemoStore()
 const selectedFile = ref<File | null>(null)
 
-const tableLabels: Record<string, string> = {
+const tableLabels: Record<DemoTableKey, string> = {
   claim: '主张',
   verification_run: '核验运行',
   verification_task: '核验任务',
@@ -16,7 +22,7 @@ const tableLabels: Record<string, string> = {
   evaluation_run: '评测运行',
 }
 
-const directoryLabels: Record<string, string> = {
+const directoryLabels: Record<DemoDirectoryKey, string> = {
   uploads: '上传材料目录',
   'skill-snapshots': 'Skill 快照目录',
   'skill-runtime': 'Skill 运行目录',
@@ -119,9 +125,10 @@ async function exportSnapshot() {
       <div class="results-heading"><div><span class="step-index">03</span><strong>当前演示数据状态</strong></div></div>
       <div v-if="!store.state && !store.error" class="compact-empty">正在读取七表与三个目录状态…</div>
       <div v-else-if="store.state" class="demo-state-grid">
-        <article><strong>七张业务表</strong><dl><template v-for="(count, table) in store.state.tableCounts" :key="table"><dt>{{ tableLabels[table] ?? table }}（{{ table }}）</dt><dd>{{ count }}</dd></template></dl></article>
-        <article><strong>三个受管目录</strong><dl><template v-for="(empty, directory) in store.state.storageEmpty" :key="directory"><dt>{{ directoryLabels[directory] ?? directory }}（{{ directory }}）</dt><dd :class="empty ? 'state-ok' : 'state-alert'">{{ empty ? '为空' : '含运行数据' }}</dd></template></dl></article>
+        <article><strong>七张业务表</strong><dl><template v-for="table in DEMO_TABLE_KEYS" :key="table"><dt>{{ tableLabels[table] }}（{{ table }}）</dt><dd>{{ store.state.tableCounts[table] ?? '—' }}</dd></template></dl></article>
+        <article><strong>三个受管目录</strong><dl><template v-for="directory in DEMO_DIRECTORY_KEYS" :key="directory"><dt>{{ directoryLabels[directory] }}（{{ directory }}）</dt><dd :class="store.state.storageEmpty[directory] === true ? 'state-ok' : 'state-alert'">{{ store.state.storageEmpty[directory] === true ? '为空' : '含运行数据或状态异常' }}</dd></template></dl></article>
       </div>
+      <p v-if="store.state && !store.isStateContractValid" class="error-message">状态合同异常/无法安全导入自定义快照，请刷新后确认七表和三个目录状态。</p>
       <p v-if="store.error" class="error-message">{{ store.error }}</p>
     </section>
 

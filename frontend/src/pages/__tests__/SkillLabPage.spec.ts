@@ -528,4 +528,70 @@ describe('SkillLabPage', () => {
     expect(wrapper.text()).not.toContain('预置服务暂不可用')
     vi.unstubAllGlobals()
   })
+
+  function draft(id: string, summary: string) {
+    return {
+      id, skillKey: 'company-material-fact-check', version: null, parentVersionId: null,
+      status: 'DRAFT' as const, contentHash: null, changeSummary: summary,
+      createdAt: '2026-08-13T00:00:00Z', frozenAt: null,
+    }
+  }
+
+  function draftContent(id: string, markdown: string, summary: string) {
+    return {
+      id, parentVersionId: null, status: 'DRAFT' as const, editable: true,
+      skillMarkdown: markdown, references: [], changeSummary: summary,
+    }
+  }
+
+  function presetSwitchFixture() {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useSkillStore()
+    const demoStore = useDemoStore()
+    const first = draft('draft-one', '第一份草稿')
+    const second = draft('draft-two', '第二份草稿')
+    store.versions = [first, second]
+    store.currentDraft = first
+    store.selectedVersionId = first.id
+    store.selectedContent = draftContent(first.id, '# 第一份草稿', first.changeSummary)
+    demoStore.skillPresets = [{
+      id: '02-improved', label: '优化候选版', skillName: 'company-material-fact-check',
+      skillMarkdown: '# 预置内容', references: [],
+    }]
+    vi.spyOn(store, 'load').mockResolvedValue()
+    vi.spyOn(store, 'selectVersion').mockImplementation(async (id: string) => {
+      const next = id === second.id ? second : first
+      store.selectedVersionId = next.id
+      store.currentDraft = next
+      store.selectedContent = draftContent(next.id, `# ${next.changeSummary}`, next.changeSummary)
+    })
+    return { pinia, store }
+  }
+
+  it('切换到另一个 DRAFT 时清空已选预置', async () => {
+    const { pinia } = presetSwitchFixture()
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+    await wrapper.get('[data-test="skill-preset"]').setValue('02-improved')
+
+    await wrapper.findAll('.version-row')[1]!.trigger('click')
+    await wrapper.vm.$nextTick()
+
+    expect((wrapper.get('[data-test="skill-preset"]').element as HTMLSelectElement).value).toBe('')
+  })
+
+  it('切换 DRAFT 后不能直接应用上一份草稿的预置', async () => {
+    const { pinia } = presetSwitchFixture()
+    const confirm = vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+    await wrapper.get('[data-test="skill-preset"]').setValue('02-improved')
+
+    await wrapper.findAll('.version-row')[1]!.trigger('click')
+    await wrapper.vm.$nextTick()
+    await wrapper.get('[data-test="apply-skill-preset"]').trigger('click')
+
+    expect(wrapper.get('[data-test="apply-skill-preset"]').attributes('disabled')).toBeDefined()
+    expect(confirm).not.toHaveBeenCalled()
+    expect(wrapper.findAll('textarea.code-editor')[0]?.element.value).toBe('# 第二份草稿')
+  })
 })
