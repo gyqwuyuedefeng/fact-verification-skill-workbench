@@ -2,7 +2,9 @@ package com.hsmap.factverification.demo.api;
 
 import com.hsmap.factverification.demo.DemoStateService;
 import com.hsmap.factverification.demo.DemoStateView;
+import com.hsmap.factverification.demo.BuiltinDemoFixtureService;
 import com.hsmap.factverification.demo.SnapshotArchiveService;
+import com.hsmap.factverification.demo.SkillPresetService;
 import com.hsmap.factverification.shared.RequestId;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
@@ -36,11 +38,19 @@ public class DemoStateController {
 
     private final DemoStateService service;
     private final SnapshotArchiveService snapshots;
+    private final SkillPresetService presets;
+    private final BuiltinDemoFixtureService builtinFixture;
 
-    /** 注入演示状态与快照服务；控制器只处理固定 HTTP 合同，不直接访问 JDBC 或文件系统。 */
-    public DemoStateController(DemoStateService service, SnapshotArchiveService snapshots) {
+    /** 注入演示状态、快照和固定 fixture 服务；控制器只处理 HTTP 合同，不直接访问 JDBC 或文件系统。 */
+    public DemoStateController(
+            DemoStateService service,
+            SnapshotArchiveService snapshots,
+            SkillPresetService presets,
+            BuiltinDemoFixtureService builtinFixture) {
         this.service = service;
         this.snapshots = snapshots;
+        this.presets = presets;
+        this.builtinFixture = builtinFixture;
     }
 
     /** 返回七张业务表计数和三个受管运行目录是否为空的脱敏状态。 */
@@ -85,6 +95,19 @@ public class DemoStateController {
             @RequestHeader("X-Confirmation-Phrase") String confirmationPhrase, HttpServletRequest request)
             throws IOException {
         snapshots.importFrom(request.getInputStream(), confirmationPhrase);
+        return service.status();
+    }
+
+    /** 返回三套完整 Skill Markdown/references；业务顺序由预置服务固定，HTTP 不接受任意路径或 preset id。 */
+    @GetMapping("/skill-presets")
+    public java.util.List<SkillPresetService.SkillPreset> skillPresets() {
+        return presets.presets();
+    }
+
+    /** 使用专用确认短语从空状态恢复固定脱敏 fixture，并返回 Task 4 既有状态投影。 */
+    @PostMapping("/import-builtin")
+    public DemoStateView importBuiltin(@RequestHeader("X-Confirmation-Phrase") String confirmationPhrase) {
+        builtinFixture.importBuiltin(confirmationPhrase);
         return service.status();
     }
 

@@ -37,6 +37,7 @@ workbench:
   demo-admin:
     enabled: false
     demo-material-root: evals/demo-materials
+    skill-preset-root: skills/presets
     max-archive-bytes: 209715200
     max-entry-count: 2000
     max-expanded-bytes: 524288000

@@ -230,6 +230,16 @@ public class SnapshotArchiveService {
         importUntrustedOutsideLock(input);
     }
 
+    /**
+     * 导入由内置 fixture 服务在本机生成的 v1 快照。
+     *
+     * <p>该 adapter 只省略用户 ZIP 专用确认语；后续仍完整经过原始包落盘、EOCD/entry/manifest/JSONL/SHA 校验、管理写锁、固定七表锁、
+     * 同一导入事务和目录交换。Task 6 不得绕过此入口直接写仓储或正式目录。
+     */
+    public void importValidatedBuiltin(InputStream input) {
+        importUntrustedOutsideLock(input);
+    }
+
     /** 原始网络流落盘与全部不可信 ZIP 校验在管理锁外完成，慢上传不能阻塞 reset 或普通文件生产。 */
     private void importUntrustedOutsideLock(InputStream input) {
         UUID operationId = UUID.randomUUID();

@@ -177,6 +177,13 @@ public class DemoStateService {
         }
     }
 
+    /** 校验内置演示导入专用确认短语；它与用户 ZIP 导入短语分离，避免误触固定状态恢复。 */
+    public void requireBuiltinImportConfirmationPhrase(String confirmationPhrase) {
+        if (!"导入内置演示数据".equals(confirmationPhrase)) {
+            throw new ServiceException("DEMO_BUILTIN_CONFIRMATION_INVALID", "确认短语必须为“导入内置演示数据”");
+        }
+    }
+
     /** 活动评测、解析或运行中的核验都可能继续写入数据，因此统一拒绝管理端清空操作。 */
     private void requireNoActiveWork() {
         if (repository.hasActiveEvaluations() || repository.hasActiveVerificationWork()) {

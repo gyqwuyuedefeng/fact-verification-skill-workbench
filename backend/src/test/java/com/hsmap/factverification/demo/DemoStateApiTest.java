@@ -32,6 +32,8 @@ class DemoStateApiTest {
 
     private DemoStateService service;
     private SnapshotArchiveService snapshots;
+    private SkillPresetService presets;
+    private BuiltinDemoFixtureService builtinFixture;
     private MockMvc mvc;
 
     /** 初始化控制器的独立 HTTP 测试环境，避免条件装配测试依赖完整 Web 应用。 */
@@ -39,7 +41,9 @@ class DemoStateApiTest {
     void setUp() {
         service = mock(DemoStateService.class);
         snapshots = mock(SnapshotArchiveService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new DemoStateController(service, snapshots))
+        presets = mock(SkillPresetService.class);
+        builtinFixture = mock(BuiltinDemoFixtureService.class);
+        mvc = MockMvcBuilders.standaloneSetup(new DemoStateController(service, snapshots, presets, builtinFixture))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -102,6 +106,37 @@ class DemoStateApiTest {
     }
 
     /**
+     * 测试场景：管理端读取三套完整预置并从空状态导入内置演示。
+     * 前置条件：预置服务按 01/02/03 返回完整内容，导入请求携带专用确认短语。
+     * 期望结果：GET 保持稳定数组顺序，POST 把确认语交给 fixture 服务并返回状态。
+     * 断言重点：两个接口仍位于同一 test-profile + enabled 控制器，不新增独立暴露面。
+     */
+    @Test
+    void exposesSkillPresetsAndBuiltinImportEndpoints() throws Exception {
+        org.mockito.Mockito.when(presets.presets())
+                .thenReturn(java.util.List.of(
+                        new SkillPresetService.SkillPreset(
+                                "01-initial", "初始稳定版", "company-material-fact-check", "first", java.util.List.of()),
+                        new SkillPresetService.SkillPreset(
+                                "02-improved", "优化候选版", "company-material-fact-check", "second", java.util.List.of()),
+                        new SkillPresetService.SkillPreset(
+                                "03-regression", "回归失败版", "company-material-fact-check", "third", java.util.List.of())));
+        org.mockito.Mockito.when(service.status()).thenReturn(new DemoStateView(Map.of(), Map.of()));
+
+        mvc.perform(get("/api/admin/demo-state/skill-presets"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[0].id")
+                        .value("01-initial"))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[2].id")
+                        .value("03-regression"));
+        mvc.perform(post("/api/admin/demo-state/import-builtin")
+                        .header("X-Confirmation-Phrase", "导入内置演示数据"))
+                .andExpect(status().isOk());
+
+        verify(builtinFixture).importBuiltin("导入内置演示数据");
+    }
+
+    /**
      * 测试场景：非 test profile 即使错误地开启配置，也尝试加载演示管理控制器。
      * 前置条件：上下文只注册控制器及其服务 Mock，不创建业务基础设施。
      * 期望结果：Profile 条件阻止控制器 Bean 装配。
@@ -143,6 +178,8 @@ class DemoStateApiTest {
                 .withUserConfiguration(DemoStateController.class)
                 .withBean(DemoStateService.class, () -> mock(DemoStateService.class))
                 .withBean(SnapshotArchiveService.class, () -> mock(SnapshotArchiveService.class))
+                .withBean(SkillPresetService.class, () -> mock(SkillPresetService.class))
+                .withBean(BuiltinDemoFixtureService.class, () -> mock(BuiltinDemoFixtureService.class))
                 .withInitializer(context -> context.getEnvironment().setActiveProfiles(profile))
                 .withPropertyValues("workbench.demo-admin.enabled=" + enabled);
     }

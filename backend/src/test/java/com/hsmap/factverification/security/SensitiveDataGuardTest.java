@@ -9,9 +9,9 @@ import java.util.regex.Pattern;
 import org.junit.jupiter.api.Test;
 
 /**
- * 被测试对象：生产配置与比赛快照实现的敏感数据边界。
- * 测试目的：防止真实数据库、ES 或模型凭据写入默认配置，或被快照实现作为可导出来源引用。
- * 覆盖范围：两个应用资源配置、快照服务源码中的凭据变量名与配置目录引用。
+ * 被测试对象：生产配置、比赛快照、内置 fixture 与三阶段 Skill 预置的敏感数据边界。
+ * 测试目的：防止真实数据库、ES 或模型凭据写入默认配置、内置资产，或被快照实现作为可导出来源引用。
+ * 覆盖范围：两个应用资源配置、demo-state 资源、skills/presets 和快照服务源码中的凭据引用。
  * 前置条件：仅只读扫描工作区源码和资源，不加载环境变量、不访问外部服务。
  */
 class SensitiveDataGuardTest {
@@ -60,5 +60,30 @@ class SensitiveDataGuardTest {
                 .doesNotContain("ES_PASSWORD")
                 .doesNotContain("LOCAL_MODEL_API_KEY")
                 .doesNotContain("src/main/resources");
+    }
+
+    /**
+     * 测试场景：扫描新增的脱敏 fixture 与三套预置正文。
+     * 前置条件：资源只允许保存固定业务 UUID、公开演示材料内容和 Skill 规则，不允许凭据字段或 JDBC user-info。
+     * 期望结果：所有新增文本都不包含明文 secret、连接串账号段或常见凭据字段。
+     * 断言重点：被 Git 跟踪的内置演示资产不能因为“仅 test profile 使用”而放宽敏感数据门禁。
+     */
+    @Test
+    void builtinFixtureAndSkillPresetsContainNoSensitiveData() throws Exception {
+        List<Path> roots = List.of(Path.of("src/main/resources/demo-state"), Path.of("../skills/presets"));
+        for (Path root : roots) {
+            try (var files = Files.walk(root)) {
+                for (Path file : files.filter(Files::isRegularFile).toList()) {
+                    String text = Files.readString(file);
+                    assertThat(text)
+                            .as("内置资产敏感字段: %s", file)
+                            .doesNotContain("jdbc:", "APP_DB_PASSWORD", "ES_PASSWORD", "LOCAL_MODEL_API_KEY")
+                            .doesNotMatch("(?is).*\\\"(?:username|password|api[-_]?key)\\\"\\s*:.*");
+                    assertThat(JDBC_USER_INFO.matcher(text).find())
+                            .as("内置资产 JDBC user-info: %s", file)
+                            .isFalse();
+                }
+            }
+        }
     }
 }

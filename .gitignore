@@ -11,6 +11,7 @@ data/skill-runtime/*
 data/.demo-import/
 data/.demo-export/
 data/.demo-reset/
+data/.demo-builtin/
 .env
 .env.*
 !.env.example

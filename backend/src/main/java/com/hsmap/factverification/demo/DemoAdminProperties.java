@@ -15,6 +15,18 @@ import org.springframework.validation.annotation.Validated;
 public record DemoAdminProperties(
         boolean enabled,
         Path demoMaterialRoot,
+        Path skillPresetRoot,
         @Positive long maxArchiveBytes,
         @Positive int maxEntryCount,
-        @Positive long maxExpandedBytes) {}
+        @Positive long maxExpandedBytes) {
+
+    /** 保留 Task 5 包内测试构造合同；旧用例不消费 preset 根，默认指向正式相对路径。 */
+    DemoAdminProperties(
+            boolean enabled,
+            Path demoMaterialRoot,
+            long maxArchiveBytes,
+            int maxEntryCount,
+            long maxExpandedBytes) {
+        this(enabled, demoMaterialRoot, Path.of("skills/presets"), maxArchiveBytes, maxEntryCount, maxExpandedBytes);
+    }
+}
