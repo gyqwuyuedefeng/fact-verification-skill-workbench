@@ -54,6 +54,22 @@ function selectSnapshot(event: Event) {
   }
 }
 
+/** 即使服务端 JSON 缺失顶层映射，管理页也只展示占位，不在合同异常提示前解引用失败。 */
+function tableCountValue(table: DemoTableKey): number | '—' {
+  const tableCounts: unknown = store.state?.tableCounts
+  if (typeof tableCounts !== 'object' || tableCounts === null || Array.isArray(tableCounts)) return '—'
+  const value = (tableCounts as Record<string, unknown>)[table]
+  return typeof value === 'number' ? value : '—'
+}
+
+/** 目录值不是严格 boolean 时以“未知”显示，且 store.isBlank 已保持导入失败关闭。 */
+function directoryEmptyValue(directory: DemoDirectoryKey): boolean | null {
+  const storageEmpty: unknown = store.state?.storageEmpty
+  if (typeof storageEmpty !== 'object' || storageEmpty === null || Array.isArray(storageEmpty)) return null
+  const value = (storageEmpty as Record<string, unknown>)[directory]
+  return typeof value === 'boolean' ? value : null
+}
+
 async function reset() {
   const phrase = globalThis.prompt('此操作会清空七张比赛数据表和三个运行目录。请输入“清空全部比赛数据”确认：')
   if (phrase === null) return
@@ -125,8 +141,8 @@ async function exportSnapshot() {
       <div class="results-heading"><div><span class="step-index">03</span><strong>当前演示数据状态</strong></div></div>
       <div v-if="!store.state && !store.error" class="compact-empty">正在读取七表与三个目录状态…</div>
       <div v-else-if="store.state" class="demo-state-grid">
-        <article><strong>七张业务表</strong><dl><template v-for="table in DEMO_TABLE_KEYS" :key="table"><dt>{{ tableLabels[table] }}（{{ table }}）</dt><dd>{{ store.state.tableCounts[table] ?? '—' }}</dd></template></dl></article>
-        <article><strong>三个受管目录</strong><dl><template v-for="directory in DEMO_DIRECTORY_KEYS" :key="directory"><dt>{{ directoryLabels[directory] }}（{{ directory }}）</dt><dd :class="store.state.storageEmpty[directory] === true ? 'state-ok' : 'state-alert'">{{ store.state.storageEmpty[directory] === true ? '为空' : '含运行数据或状态异常' }}</dd></template></dl></article>
+        <article><strong>七张业务表</strong><dl><template v-for="table in DEMO_TABLE_KEYS" :key="table"><dt>{{ tableLabels[table] }}（{{ table }}）</dt><dd>{{ tableCountValue(table) }}</dd></template></dl></article>
+        <article><strong>三个受管目录</strong><dl><template v-for="directory in DEMO_DIRECTORY_KEYS" :key="directory"><dt>{{ directoryLabels[directory] }}（{{ directory }}）</dt><dd :class="directoryEmptyValue(directory) === true ? 'state-ok' : 'state-alert'">{{ directoryEmptyValue(directory) === true ? '为空' : directoryEmptyValue(directory) === false ? '含运行数据' : '未知' }}</dd></template></dl></article>
       </div>
       <p v-if="store.state && !store.isStateContractValid" class="error-message">状态合同异常/无法安全导入自定义快照，请刷新后确认七表和三个目录状态。</p>
       <p v-if="store.error" class="error-message">{{ store.error }}</p>

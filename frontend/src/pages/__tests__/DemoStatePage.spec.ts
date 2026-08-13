@@ -146,6 +146,20 @@ describe('DemoStatePage', () => {
     expect(wrapper.get('[data-test="import-snapshot"]').attributes('disabled')).toBeUndefined()
   })
 
+  it.each([
+    ['顶层字段缺失', {}],
+    ['顶层字段为 null', { tableCounts: null, storageEmpty: null }],
+  ])('状态%s时仍安全展示异常并禁用导入', async (_name, body) => {
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response(body)))
+    const wrapper = mountPage()
+    const store = useDemoStore()
+    await vi.waitFor(() => expect(store.busy).toBe(false))
+
+    expect(wrapper.text()).toContain('状态合同异常/无法安全导入')
+    expect(wrapper.text()).toContain('未知')
+    expect(wrapper.get('[data-test="import-snapshot"]').attributes('disabled')).toBeDefined()
+  })
+
   it('导入成功后通过真实 store action 重新加载状态', async () => {
     const fetchMock = vi.fn()
       .mockResolvedValueOnce(response(state()))
