@@ -9,6 +9,7 @@ data/skill-snapshots/*
 data/skill-runtime/*
 !data/skill-runtime/.gitkeep
 data/.demo-import/
+data/.demo-export/
 data/.demo-reset/
 .env
 .env.*

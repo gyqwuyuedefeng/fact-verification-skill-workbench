@@ -4,6 +4,7 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.core.type.TypeReference;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsmap.factverification.config.WorkbenchProperties;
+import com.hsmap.factverification.demo.DemoOperationCoordinator;
 import com.hsmap.factverification.persistence.JdbcJson;
 import com.hsmap.factverification.shared.ServiceException;
 import com.hsmap.factverification.skill.persistence.SkillVersionRepository;
@@ -40,6 +41,7 @@ public class SkillVersionService {
     private final WorkbenchProperties properties;
     private final ObjectMapper objectMapper;
     private final JdbcJson jdbcJson;
+    private final DemoOperationCoordinator operationCoordinator;
 
     /** Spring 生产装配入口；显式标记避免包内测试构造器参与运行时选择。 */
     @Autowired
@@ -47,7 +49,8 @@ public class SkillVersionService {
             SkillVersionRepository versions,
             WorkbenchProperties properties,
             ObjectMapper objectMapper,
-            JdbcJson jdbcJson) {
+            JdbcJson jdbcJson,
+            DemoOperationCoordinator operationCoordinator) {
         this(
                 versions,
                 new FrozenSkillStorage(
@@ -55,7 +58,8 @@ public class SkillVersionService {
                         properties.storageRoot().resolve("skill-runtime")),
                 properties,
                 objectMapper,
-                jdbcJson);
+                jdbcJson,
+                operationCoordinator);
     }
 
     /** 测试可注入隔离目录，生产仍使用 workbench storageRoot。 */
@@ -65,11 +69,23 @@ public class SkillVersionService {
             WorkbenchProperties properties,
             ObjectMapper objectMapper,
             JdbcJson jdbcJson) {
+        this(versions, storage, properties, objectMapper, jdbcJson, new DemoOperationCoordinator());
+    }
+
+    /** 文件生产并发测试显式共享管理协调器，生产仍由 Spring 注入同一个单用途 Bean。 */
+    SkillVersionService(
+            SkillVersionRepository versions,
+            FrozenSkillStorage storage,
+            WorkbenchProperties properties,
+            ObjectMapper objectMapper,
+            JdbcJson jdbcJson,
+            DemoOperationCoordinator operationCoordinator) {
         this.versions = versions;
         this.storage = storage;
         this.properties = properties;
         this.objectMapper = objectMapper;
         this.jdbcJson = jdbcJson;
+        this.operationCoordinator = operationCoordinator;
     }
 
     /** 从当前仓库 Skill 或指定父版本克隆出一个全新 DRAFT。 */
@@ -118,6 +134,11 @@ public class SkillVersionService {
     /** 将 DRAFT 文件化、hash、物理只读，并原子转换为 Candidate。 */
     @Transactional
     public SkillVersionView freeze(UUID id) {
+        return operationCoordinator.duringFileProduction(() -> freezeDuringFileProduction(id));
+    }
+
+    /** snapshot/runtime 双目录生成与数据库冻结状态更新属于一个文件生产周期。 */
+    private SkillVersionView freezeDuringFileProduction(UUID id) {
         SkillVersionRepository.VersionRow draft = find(id);
         if (!"DRAFT".equals(draft.status())) {
             throw new ServiceException("SKILL_DRAFT_NOT_EDITABLE", "只有 DRAFT 可以冻结");

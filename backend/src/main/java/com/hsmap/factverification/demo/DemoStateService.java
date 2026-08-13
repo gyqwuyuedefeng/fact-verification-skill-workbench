@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import java.util.concurrent.atomic.AtomicReference;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -101,19 +102,27 @@ public class DemoStateService {
      * <p>只有独立事务的 executeWithoutResult 正常返回（即已完成 commit）后才会销毁目录暂存；异常路径始终恢复目录。
      */
     private DemoStateView performReset() {
-        requireNoActiveWork();
-        ManagedStorageSwap.PreparedStorageSwap prepared = storageSwap.prepare(UUID.randomUUID());
+        AtomicReference<ManagedStorageSwap.PreparedStorageSwap> prepared = new AtomicReference<>();
         try {
-            resetTransactionTemplate.executeWithoutResult(status -> repository.clearAll());
+            resetTransactionTemplate.executeWithoutResult(status -> {
+                // 先取表锁再重查活动状态，普通 DB 写入要么已提交并被检查看到，要么在本事务后继续。
+                repository.lockAllTablesForStateReplacement();
+                requireNoActiveWork();
+                ManagedStorageSwap.PreparedStorageSwap swap = storageSwap.prepare(UUID.randomUUID());
+                prepared.set(swap);
+                repository.clearAll();
+            });
         } catch (RuntimeException exception) {
-            try {
-                storageSwap.restore(prepared);
-            } catch (RuntimeException restoreException) {
-                exception.addSuppressed(restoreException);
+            if (prepared.get() != null) {
+                try {
+                    storageSwap.restore(prepared.get());
+                } catch (RuntimeException restoreException) {
+                    exception.addSuppressed(restoreException);
+                }
             }
             throw exception;
         }
-        storageSwap.commit(prepared);
+        storageSwap.commit(prepared.get());
         return status();
     }
 

@@ -11,13 +11,14 @@ import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
+import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
-import java.nio.file.AtomicMoveNotSupportedException;
 import java.nio.file.Files;
 import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
-import java.nio.file.StandardCopyOption;
 import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
@@ -31,6 +32,7 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
+import java.util.concurrent.atomic.AtomicReference;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
@@ -57,6 +59,9 @@ public class SnapshotArchiveService {
     private static final String FILES_ROOT = "files";
     private static final String GIT_KEEP = ".gitkeep";
     private static final String IMPORT_ROOT = ".demo-import";
+    private static final String EXPORT_ROOT = ".demo-export";
+    private static final int EOCD_MINIMUM_BYTES = 22;
+    private static final int EOCD_MAXIMUM_TAIL_BYTES = EOCD_MINIMUM_BYTES + 65_535;
     private static final List<String> MANAGED_DIRECTORIES = List.of("uploads", "skill-snapshots", "skill-runtime");
     private static final List<SnapshotTable> IMPORT_ORDER = List.of(
             SnapshotTable.SKILL_VERSION,
@@ -81,6 +86,7 @@ public class SnapshotArchiveService {
     private final TransactionTemplate importTransaction;
     private final TransactionTemplate exportTransaction;
     private final DemoOperationCoordinator operationCoordinator;
+    private final ManagedStorageSwap storageSwap;
 
     /**
      * 注入应用仓储、Task 4 状态门禁、既有 storageRoot、受控上限与数据库事务管理器。
@@ -96,7 +102,8 @@ public class SnapshotArchiveService {
             DemoAdminProperties adminProperties,
             ObjectMapper objectMapper,
             PlatformTransactionManager transactionManager,
-            DemoOperationCoordinator operationCoordinator) {
+            DemoOperationCoordinator operationCoordinator,
+            ManagedStorageSwap storageSwap) {
         this.repository = repository;
         this.stateService = stateService;
         this.storageRoot = workbenchProperties.storageRoot().toAbsolutePath().normalize();
@@ -107,6 +114,7 @@ public class SnapshotArchiveService {
         this.importTransaction = requiresNew(transactionManager);
         this.exportTransaction = stableReadSnapshot(transactionManager);
         this.operationCoordinator = operationCoordinator;
+        this.storageSwap = storageSwap;
     }
 
     /** 保留 Task 5 已有包内单元测试构造方式；生产 Spring 只选择带共享协调器的构造器。 */
@@ -124,7 +132,28 @@ public class SnapshotArchiveService {
                 adminProperties,
                 objectMapper,
                 transactionManager,
-                new DemoOperationCoordinator());
+                new DemoOperationCoordinator(),
+                new ManagedStorageSwap(workbenchProperties.storageRoot()));
+    }
+
+    /** 并发聚焦测试可共享协调器观察锁周期，文件交换器仍限定在同一测试 storageRoot。 */
+    SnapshotArchiveService(
+            DemoStateRepository repository,
+            DemoStateService stateService,
+            WorkbenchProperties workbenchProperties,
+            DemoAdminProperties adminProperties,
+            ObjectMapper objectMapper,
+            PlatformTransactionManager transactionManager,
+            DemoOperationCoordinator operationCoordinator) {
+        this(
+                repository,
+                stateService,
+                workbenchProperties,
+                adminProperties,
+                objectMapper,
+                transactionManager,
+                operationCoordinator,
+                new ManagedStorageSwap(workbenchProperties.storageRoot()));
     }
 
     /**
@@ -133,32 +162,52 @@ public class SnapshotArchiveService {
      * <p>活动工作检查先于 ZIP header；数据库按行写 JSONL，文件按固定目录遍历并计算实际读取字节摘要，manifest 最后写入。
      */
     public void exportTo(OutputStream output) {
-        operationCoordinator.exclusively(() -> exportExclusively(output));
+        UUID operationId = UUID.randomUUID();
+        Path operationRoot = null;
+        try {
+            operationRoot = prepareOperationRoot(EXPORT_ROOT, operationId);
+            Path archivePath = requireWithinOperation(operationRoot, operationRoot.resolve("snapshot.zip"));
+            Path lockedOperationRoot = operationRoot;
+            operationCoordinator.exclusively(() -> exportExclusively(archivePath, lockedOperationRoot));
+            // 客户端下载速度不属于比赛状态替换边界；本地快照生成完毕后释放管理写锁，再执行网络复制。
+            try (InputStream input = Files.newInputStream(archivePath)) {
+                input.transferTo(output);
+            }
+            output.flush();
+        } catch (ServiceException exception) {
+            throw exception;
+        } catch (IOException exception) {
+            throw new ServiceException("DEMO_SNAPSHOT_EXPORT_FAILED", "比赛状态快照导出失败");
+        } finally {
+            deleteTreeQuietly(operationRoot);
+        }
     }
 
     /** 在 reset/import 不可交错的边界中，用单一数据库快照同时决定应导出的文件集。 */
-    private void exportExclusively(OutputStream output) {
+    private void exportExclusively(Path archivePath, Path operationRoot) {
         try {
             Files.createDirectories(storageRoot);
-            ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8);
-            SnapshotManifest[] manifest = new SnapshotManifest[1];
-            exportTransaction.executeWithoutResult(status -> {
-                stateService.requireQuiescentForSnapshotExport();
-                try {
-                    ExportSelection selection = new ExportSelection();
-                    Map<String, SnapshotManifest.TableEntry> tables = exportTables(zip, selection);
-                    List<SnapshotManifest.FileEntry> files = exportManagedFiles(zip, selection);
-                    manifest[0] = new SnapshotManifest(SnapshotManifest.FORMAT_VERSION, Instant.now(), tables, files);
-                } catch (IOException exception) {
-                    throw new SnapshotIoException(exception);
-                }
-            });
-            writeEntry(
-                    zip,
-                    MANIFEST_ENTRY,
-                    objectMapper.writeValueAsBytes(manifest[0]));
-            zip.finish();
-            zip.flush();
+            requireSafePhysicalParent(operationRoot, archivePath.getParent());
+            try (OutputStream file = new LimitedOutputStream(
+                            Files.newOutputStream(archivePath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
+                            maxArchiveBytes);
+                    ZipOutputStream zip = new ZipOutputStream(file, StandardCharsets.UTF_8)) {
+                SnapshotManifest[] manifest = new SnapshotManifest[1];
+                exportTransaction.executeWithoutResult(status -> {
+                    stateService.requireQuiescentForSnapshotExport();
+                    try {
+                        ExportSelection selection = new ExportSelection();
+                        Map<String, SnapshotManifest.TableEntry> tables = exportTables(zip, selection);
+                        List<SnapshotManifest.FileEntry> files = exportManagedFiles(zip, selection);
+                        manifest[0] =
+                                new SnapshotManifest(SnapshotManifest.FORMAT_VERSION, Instant.now(), tables, files);
+                    } catch (IOException exception) {
+                        throw new SnapshotIoException(exception);
+                    }
+                });
+                writeEntry(zip, MANIFEST_ENTRY, objectMapper.writeValueAsBytes(manifest[0]));
+                zip.finish();
+            }
         } catch (ServiceException exception) {
             throw exception;
         } catch (SnapshotIoException exception) {
@@ -175,21 +224,20 @@ public class SnapshotArchiveService {
      */
     public void importFrom(InputStream input, String confirmationPhrase) {
         stateService.requireImportConfirmationPhrase(confirmationPhrase);
-        operationCoordinator.exclusively(() -> importExclusively(input));
+        stateService.requireBlank();
+        importUntrustedOutsideLock(input);
     }
 
-    /** 确认语通过后将两次空白检查、完整预检、事务与目录安装放在同一独占边界。 */
-    private void importExclusively(InputStream input) {
-        stateService.requireBlank();
+    /** 原始网络流落盘与全部不可信 ZIP 校验在管理锁外完成，慢上传不能阻塞 reset 或普通文件生产。 */
+    private void importUntrustedOutsideLock(InputStream input) {
         UUID operationId = UUID.randomUUID();
         Path operationRoot = null;
         try {
-            operationRoot = prepareOperationRoot(operationId);
+            operationRoot = prepareOperationRoot(IMPORT_ROOT, operationId);
             Path archivePath = copyArchive(input, operationRoot.resolve("archive.zip"));
             StagedSnapshot staged = validateStagedArchive(operationRoot, archivePath);
             preflightImportRows(staged);
-            stateService.requireBlank();
-            applyValidatedSnapshot(staged);
+            operationCoordinator.exclusively(() -> applyValidatedSnapshot(staged));
         } catch (ServiceException exception) {
             throw exception;
         } catch (IOException exception) {
@@ -210,7 +258,7 @@ public class SnapshotArchiveService {
         UUID operationId = UUID.randomUUID();
         Path operationRoot = null;
         try {
-            operationRoot = prepareOperationRoot(operationId);
+            operationRoot = prepareOperationRoot(IMPORT_ROOT, operationId);
             try (InputStream input = Files.newInputStream(zipPath)) {
                 Path archivePath = copyArchive(input, operationRoot.resolve("archive.zip"));
                 return validateStagedArchive(operationRoot, archivePath);
@@ -241,7 +289,8 @@ public class SnapshotArchiveService {
                 if (table == SnapshotTable.VERIFICATION_TASK) {
                     normalized = normalizeExportTaskRow(json, selection);
                 } else if (table == SnapshotTable.SKILL_VERSION) {
-                    selection.skillVersionIds().add(requiredUuid(requireObjectRow(json), "id"));
+                    ObjectNode row = requireObjectRow(json);
+                    selection.skillVersions().put(requiredUuid(row, "id"), requiredText(row, "status"));
                 }
                 byte[] bytes = normalized.getBytes(StandardCharsets.UTF_8);
                 if (bytes.length > MAX_JSONL_LINE_BYTES) {
@@ -267,9 +316,16 @@ public class SnapshotArchiveService {
     private List<SnapshotManifest.FileEntry> exportManagedFiles(ZipOutputStream zip, ExportSelection selection)
             throws IOException {
         Set<Path> selected = new LinkedHashSet<>(selection.uploadFiles());
-        for (UUID versionId : selection.skillVersionIds()) {
-            collectVersionFiles(selected, "skill-snapshots", versionId);
-            collectVersionFiles(selected, "skill-runtime", versionId);
+        for (Map.Entry<UUID, String> version : selection.skillVersions().entrySet()) {
+            if ("DRAFT".equals(version.getValue())) {
+                // 草稿的临时或失败冻结残留不属于数据库状态，必须从稳定快照中排除。
+                continue;
+            }
+            if (!Set.of("CANDIDATE", "STABLE", "ARCHIVED").contains(version.getValue())) {
+                throw new ServiceException("DEMO_SNAPSHOT_SKILL_STATUS_INVALID", "Skill 版本状态无法导出");
+            }
+            collectRequiredVersionFiles(selected, "skill-snapshots", version.getKey());
+            collectRequiredVersionFiles(selected, "skill-runtime", version.getKey());
         }
         List<Path> files = new ArrayList<>(selected);
         files.sort(Comparator.comparing(path -> archivePath(storageRoot.relativize(path))));
@@ -295,11 +351,12 @@ public class SnapshotArchiveService {
         return List.copyOf(manifestFiles);
     }
 
-    /** 收集某个数据库 Skill 版本的固定目录；草稿版本可以尚未生成冻结文件。 */
-    private void collectVersionFiles(Set<Path> selected, String managedRoot, UUID versionId) throws IOException {
+    /** 收集非 DRAFT Skill 的固定冻结目录；数据库已冻结而任一物理目录缺失时拒绝产生不可恢复快照。 */
+    private void collectRequiredVersionFiles(Set<Path> selected, String managedRoot, UUID versionId)
+            throws IOException {
         Path versionRoot = requireWithinStorageRoot(storageRoot.resolve(managedRoot).resolve(versionId.toString()));
         if (!Files.exists(versionRoot, LinkOption.NOFOLLOW_LINKS)) {
-            return;
+            throw new ServiceException("DEMO_SNAPSHOT_SKILL_FILES_MISSING", "冻结 Skill 目录缺失，不能导出快照");
         }
         if (Files.isSymbolicLink(versionRoot)
                 || !Files.isDirectory(versionRoot, LinkOption.NOFOLLOW_LINKS)) {
@@ -382,6 +439,7 @@ public class SnapshotArchiveService {
         Map<String, StagedEntry> entries = new LinkedHashMap<>();
         long expandedBytes = 0L;
         int entryCount = 0;
+        EocdSummary eocd = preflightEocd(archivePath);
         try (ZipFile archive = ZipFile.builder()
                 .setPath(archivePath)
                 .setMaxNumberOfDisks(1)
@@ -432,8 +490,87 @@ public class SnapshotArchiveService {
                 entries.put(normalizedName, new StagedEntry(target, entry.isDirectory()));
             }
         }
+        if (entryCount != eocd.totalEntries()) {
+            throw new ServiceException("DEMO_SNAPSHOT_ZIP_INDEX_INVALID", "快照中央目录条目数量不一致");
+        }
         SnapshotManifest manifest = validateManifest(expandedRoot, entries);
         return new StagedSnapshot(operationRoot, expandedRoot, manifest);
+    }
+
+    /**
+     * 在 Commons Compress 建立完整中央目录索引前，仅解析文件尾 EOCD 的固定字段。
+     *
+     * <p>200 MiB/2000 entry 的比赛快照不需要 ZIP64 或分卷；先用最多 65,557 字节尾部窗口拒绝声明过多条目的小型恶意 ZIP，
+     * 避免成熟 ZIP 解析器尚未获得控制权前就为数十万中央目录记录分配对象。这里只校验 EOCD 汇总和范围，不自行解析中央目录记录；
+     * 后续 entry 语义、Unix symlink 和压缩特性仍完全交由 Commons Compress。
+     */
+    private EocdSummary preflightEocd(Path archivePath) throws IOException {
+        try (FileChannel channel = FileChannel.open(archivePath, StandardOpenOption.READ)) {
+            long fileSize = channel.size();
+            if (fileSize < EOCD_MINIMUM_BYTES) {
+                throw invalidZipIndex();
+            }
+            int tailLength = (int) Math.min(fileSize, EOCD_MAXIMUM_TAIL_BYTES);
+            ByteBuffer tail = ByteBuffer.allocate(tailLength).order(ByteOrder.LITTLE_ENDIAN);
+            long tailStart = fileSize - tailLength;
+            while (tail.hasRemaining()) {
+                if (channel.read(tail, tailStart + tail.position()) < 0) {
+                    throw invalidZipIndex();
+                }
+            }
+            byte[] bytes = tail.array();
+            int eocdOffset = -1;
+            for (int index = bytes.length - EOCD_MINIMUM_BYTES; index >= 0; index--) {
+                if ((bytes[index] & 0xff) == 0x50
+                        && (bytes[index + 1] & 0xff) == 0x4b
+                        && (bytes[index + 2] & 0xff) == 0x05
+                        && (bytes[index + 3] & 0xff) == 0x06) {
+                    int commentLength = unsignedShort(bytes, index + 20);
+                    if (index + EOCD_MINIMUM_BYTES + commentLength == bytes.length) {
+                        eocdOffset = index;
+                        break;
+                    }
+                }
+            }
+            if (eocdOffset < 0) {
+                throw invalidZipIndex();
+            }
+            int diskNumber = unsignedShort(bytes, eocdOffset + 4);
+            int centralDisk = unsignedShort(bytes, eocdOffset + 6);
+            int entriesOnDisk = unsignedShort(bytes, eocdOffset + 8);
+            int totalEntries = unsignedShort(bytes, eocdOffset + 10);
+            long centralSize = unsignedInt(bytes, eocdOffset + 12);
+            long centralOffset = unsignedInt(bytes, eocdOffset + 16);
+            if (diskNumber != 0 || centralDisk != 0 || entriesOnDisk != totalEntries) {
+                throw new ServiceException("DEMO_SNAPSHOT_ZIP_MULTIDISK_UNSUPPORTED", "快照不支持分卷 ZIP");
+            }
+            if (totalEntries == 0xffff || centralSize == 0xffff_ffffL || centralOffset == 0xffff_ffffL) {
+                throw new ServiceException("DEMO_SNAPSHOT_ZIP64_UNSUPPORTED", "比赛快照不支持 ZIP64");
+            }
+            if (totalEntries > maxEntryCount) {
+                throw new ServiceException("DEMO_SNAPSHOT_ENTRY_LIMIT_EXCEEDED", "快照文件数量超过限制");
+            }
+            long absoluteEocd = tailStart + eocdOffset;
+            if (centralOffset > absoluteEocd
+                    || centralSize > absoluteEocd - centralOffset
+                    || centralOffset + centralSize > fileSize) {
+                throw invalidZipIndex();
+            }
+            return new EocdSummary(totalEntries);
+        }
+    }
+
+    private static int unsignedShort(byte[] bytes, int offset) {
+        return ByteBuffer.wrap(bytes, offset, Short.BYTES)
+                        .order(ByteOrder.LITTLE_ENDIAN)
+                        .getShort()
+                & 0xffff;
+    }
+
+    private static long unsignedInt(byte[] bytes, int offset) {
+        return Integer.toUnsignedLong(ByteBuffer.wrap(bytes, offset, Integer.BYTES)
+                .order(ByteOrder.LITTLE_ENDIAN)
+                .getInt());
     }
 
     /** 校验固定根与路径语法；任一文本歧义都在解析到磁盘前失败关闭。 */
@@ -648,9 +785,14 @@ public class SnapshotArchiveService {
      * <p>数据库写入失败只依赖当前事务回滚，不另起 clearAll；文件仅记录并撤销本次已成功移入的目录。
      */
     private void applyValidatedSnapshot(StagedSnapshot staged) {
-        List<InstalledDirectory> installedDirectories = new ArrayList<>();
+        AtomicReference<ManagedStorageSwap.PreparedStorageSwap> prepared = new AtomicReference<>();
         try {
             importTransaction.executeWithoutResult(status -> {
+                // 固定七表排他锁必须是事务中的第一项数据库操作；随后重查空白，普通写入无法穿过检查混入。
+                repository.lockAllTablesForStateReplacement();
+                stateService.requireBlank();
+                ManagedStorageSwap.PreparedStorageSwap swap = storageSwap.prepare(UUID.randomUUID());
+                prepared.set(swap);
                 List<SkillReferenceRestore> references = importSkillRows(staged);
                 importTable(staged, SnapshotTable.EVALUATION_RUN);
                 references.forEach(reference -> repository.restoreSkillReferences(
@@ -658,12 +800,19 @@ public class SnapshotArchiveService {
                 for (SnapshotTable table : IMPORT_ORDER.subList(2, IMPORT_ORDER.size())) {
                     importTable(staged, table);
                 }
-                installManagedDirectories(staged, installedDirectories);
+                storageSwap.replaceWith(swap, stagedManagedDirectories(staged));
             });
         } catch (RuntimeException exception) {
-            rollbackInstalledDirectories(installedDirectories, exception);
+            if (prepared.get() != null) {
+                try {
+                    storageSwap.restore(prepared.get());
+                } catch (RuntimeException restoreException) {
+                    exception.addSuppressed(restoreException);
+                }
+            }
             throw exception;
         }
+        storageSwap.commit(prepared.get());
     }
 
     /** Skill 首次插入时清空两个循环引用，并保存原 UUID 供 evaluation_run 后二阶段恢复。 */
@@ -725,68 +874,20 @@ public class SnapshotArchiveService {
         }
     }
 
-    /**
-     * 把同一文件系统内的三个暂存目录逐个原子移动到空白正式路径。
-     *
-     * <p>跨三个目录不存在单一文件系统事务，因此任何中途异常由外层统一删除已移动目录并重建空白边界。
-     */
-    private void installManagedDirectories(StagedSnapshot staged, List<InstalledDirectory> installedDirectories) {
+    /** 将缺失的 files 根补成普通空目录，并只返回交换器认识的三个固定目录名。 */
+    private Map<String, Path> stagedManagedDirectories(StagedSnapshot staged) {
+        Map<String, Path> result = new LinkedHashMap<>();
         try {
             for (String directoryName : MANAGED_DIRECTORIES) {
                 Path source = requireWithinOperation(
                         staged.operationRoot(),
                         staged.expandedRoot().resolve(FILES_ROOT).resolve(directoryName));
-                Files.createDirectories(source);
-                Path target = requireWithinStorageRoot(storageRoot.resolve(directoryName));
-                if (!isBlankDirectory(target)) {
-                    throw new ServiceException("DEMO_STATE_NOT_BLANK", "正式运行目录在导入期间变为非空");
-                }
-                boolean targetExisted = Files.exists(target, LinkOption.NOFOLLOW_LINKS);
-                deleteTree(target);
-                try {
-                    Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-                } catch (AtomicMoveNotSupportedException exception) {
-                    throw new ServiceException("DEMO_SNAPSHOT_STORAGE_SWAP_FAILED", "当前文件系统不支持快照目录原子交换");
-                }
-                installedDirectories.add(new InstalledDirectory(target, targetExisted));
-                Files.writeString(target.resolve(GIT_KEEP), "", StandardCharsets.UTF_8);
+                createSafeDirectories(staged.operationRoot(), source);
+                result.put(directoryName, source);
             }
-        } catch (ServiceException exception) {
-            throw exception;
+            return Map.copyOf(result);
         } catch (IOException exception) {
-            throw new ServiceException("DEMO_SNAPSHOT_STORAGE_SWAP_FAILED", "快照运行目录交换失败");
-        }
-    }
-
-    /** 按逆序撤销本次已安装目录，并精确恢复导入前“缺失或仅 .gitkeep”形态。 */
-    private void rollbackInstalledDirectories(List<InstalledDirectory> installedDirectories, RuntimeException original) {
-        try {
-            for (int index = installedDirectories.size() - 1; index >= 0; index--) {
-                InstalledDirectory installed = installedDirectories.get(index);
-                deleteTree(installed.target());
-                if (installed.existedBefore()) {
-                    Files.createDirectories(installed.target());
-                    Files.writeString(installed.target().resolve(GIT_KEEP), "", StandardCharsets.UTF_8);
-                }
-            }
-        } catch (IOException exception) {
-            original.addSuppressed(
-                    new ServiceException("DEMO_SNAPSHOT_ROLLBACK_FAILED", "快照失败后本次安装目录无法撤销"));
-        }
-    }
-
-    /** 只有不存在或仅包含普通 .gitkeep 文件的正式目录可作为原子移动目标。 */
-    private boolean isBlankDirectory(Path directory) throws IOException {
-        if (!Files.exists(directory)) {
-            return true;
-        }
-        if (!Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS) || Files.isSymbolicLink(directory)) {
-            return false;
-        }
-        try (Stream<Path> children = Files.list(directory)) {
-            return children.allMatch(path -> Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)
-                    && !Files.isSymbolicLink(path)
-                    && GIT_KEEP.equals(path.getFileName().toString()));
+            throw new ServiceException("DEMO_SNAPSHOT_STORAGE_SWAP_FAILED", "快照运行目录安装准备失败");
         }
     }
 
@@ -969,7 +1070,7 @@ public class SnapshotArchiveService {
     }
 
     /** 创建不可预测 operationId 目录，并从 storageRoot 开始逐层验证物理位置。 */
-    private Path prepareOperationRoot(UUID operationId) throws IOException {
+    private Path prepareOperationRoot(String hiddenRoot, UUID operationId) throws IOException {
         if (Files.exists(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
             if (Files.isSymbolicLink(storageRoot)
                     || !Files.isDirectory(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
@@ -978,7 +1079,7 @@ public class SnapshotArchiveService {
         } else {
             Files.createDirectories(storageRoot);
         }
-        Path root = operationRoot(operationId);
+        Path root = operationRoot(hiddenRoot, operationId);
         createSafeDirectories(storageRoot, root);
         return root;
     }
@@ -998,9 +1099,12 @@ public class SnapshotArchiveService {
         return normalized;
     }
 
-    /** 返回不会包含调用方输入的本次导入根。 */
-    private Path operationRoot(UUID operationId) {
-        return requireWithinStorageRoot(storageRoot.resolve(IMPORT_ROOT).resolve(operationId.toString()));
+    /** 返回不会包含调用方输入的本次导入或导出操作根。 */
+    private Path operationRoot(String hiddenRoot, UUID operationId) {
+        if (!IMPORT_ROOT.equals(hiddenRoot) && !EXPORT_ROOT.equals(hiddenRoot)) {
+            throw new ServiceException("DEMO_SNAPSHOT_STAGING_PATH_INVALID", "快照暂存根不受支持");
+        }
+        return requireWithinStorageRoot(storageRoot.resolve(hiddenRoot).resolve(operationId.toString()));
     }
 
     /** 只忽略 .gitkeep 与任意层级 .demo-* 受控暂存物。 */
@@ -1127,6 +1231,11 @@ public class SnapshotArchiveService {
         return new ServiceException("DEMO_SNAPSHOT_STAGING_PATH_INVALID", "快照包含非法暂存路径");
     }
 
+    /** EOCD 汇总或中央目录范围异常时，统一拒绝进入 Commons Compress 索引阶段。 */
+    private static ServiceException invalidZipIndex() {
+        return new ServiceException("DEMO_SNAPSHOT_ZIP_INDEX_INVALID", "快照 ZIP 中央目录索引无效");
+    }
+
     /** 已完整校验的本次暂存根、展开根和 manifest；不向 HTTP 调用方暴露真实路径。 */
     record StagedSnapshot(Path operationRoot, Path expandedRoot, SnapshotManifest manifest) {}
 
@@ -1137,14 +1246,14 @@ public class SnapshotArchiveService {
     private record SkillReferenceRestore(UUID id, UUID parentVersionId, UUID registeredEvaluationId) {}
 
     /** 七表快照读取时同步收集实际文件引用，避免事后再查数据库产生跨视图。 */
-    private record ExportSelection(Set<Path> uploadFiles, Set<UUID> skillVersionIds) {
+    private record ExportSelection(Set<Path> uploadFiles, Map<UUID, String> skillVersions) {
         private ExportSelection() {
-            this(new LinkedHashSet<>(), new LinkedHashSet<>());
+            this(new LinkedHashSet<>(), new LinkedHashMap<>());
         }
     }
 
-    /** 记录本次已移入的正式目录及其导入前空白形态，补偿不触碰其他目录。 */
-    private record InstalledDirectory(Path target, boolean existedBefore) {}
+    /** EOCD 预检只向成熟解析阶段传递预期条目总数，不信任 entry 名称或 size。 */
+    private record EocdSummary(int totalEntries) {}
 
     /** 导入单行的内部回调；业务异常保持 RuntimeException 语义触发事务回滚。 */
     @FunctionalInterface
@@ -1156,6 +1265,48 @@ public class SnapshotArchiveService {
     private static final class SnapshotIoException extends RuntimeException {
         private SnapshotIoException(IOException cause) {
             super(cause);
+        }
+    }
+
+    /** 对导出本地临时 ZIP 同样执行原始压缩包硬上限，避免慢客户端之外的磁盘耗尽。 */
+    private static final class LimitedOutputStream extends OutputStream {
+        private final OutputStream delegate;
+        private final long maximumBytes;
+        private long written;
+
+        private LimitedOutputStream(OutputStream delegate, long maximumBytes) {
+            this.delegate = delegate;
+            this.maximumBytes = maximumBytes;
+        }
+
+        @Override
+        public void write(int value) throws IOException {
+            ensureCapacity(1);
+            delegate.write(value);
+            written++;
+        }
+
+        @Override
+        public void write(byte[] bytes, int offset, int length) throws IOException {
+            ensureCapacity(length);
+            delegate.write(bytes, offset, length);
+            written += length;
+        }
+
+        @Override
+        public void flush() throws IOException {
+            delegate.flush();
+        }
+
+        @Override
+        public void close() throws IOException {
+            delegate.close();
+        }
+
+        private void ensureCapacity(int bytes) {
+            if (bytes > maximumBytes - written) {
+                throw new ServiceException("DEMO_SNAPSHOT_ARCHIVE_TOO_LARGE", "导出快照压缩包大小超过限制");
+            }
         }
     }
 

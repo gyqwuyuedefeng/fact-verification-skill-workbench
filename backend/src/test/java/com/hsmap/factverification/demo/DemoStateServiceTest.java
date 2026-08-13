@@ -22,6 +22,7 @@ import java.util.concurrent.atomic.AtomicInteger;
 import java.util.stream.Stream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
+import org.mockito.InOrder;
 import org.springframework.dao.DataAccessResourceFailureException;
 import org.springframework.transaction.TransactionDefinition;
 import org.springframework.transaction.support.AbstractPlatformTransactionManager;
@@ -304,6 +305,32 @@ class DemoStateServiceTest {
 
         assertThat(transactionManager.propagations()).containsExactly(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
         assertThat(transactionManager.commits()).isEqualTo(1);
+    }
+
+    /**
+     * 测试场景：普通业务可能在 reset 首次活动检查后开始写固定七表。
+     * 前置条件：reset 使用独立事务，目录交换替身不产生文件系统噪声。
+     * 期望结果：事务内首先取得固定七表 ACCESS EXCLUSIVE 锁，然后重新检查活动工作并执行清理。
+     * 断言重点：表锁、活动检查、clearAll 的顺序不可变，不给普通 DB 写入留窗口。
+     */
+    @Test
+    void locksAllSnapshotTablesBeforeRecheckingActivityAndResetting() {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        when(repository.counts()).thenReturn(zeroCounts());
+        ManagedStorageSwap storageSwap = mock(ManagedStorageSwap.class);
+        when(storageSwap.prepare(org.mockito.ArgumentMatchers.any()))
+                .thenReturn(mock(ManagedStorageSwap.PreparedStorageSwap.class));
+        when(storageSwap.blankState())
+                .thenReturn(Map.of("uploads", true, "skill-snapshots", true, "skill-runtime", true));
+        DemoStateService service = service(repository, storageSwap, new RecordingTransactionManager());
+
+        service.reset("table-lock-reset", "清空全部比赛数据");
+
+        InOrder order = org.mockito.Mockito.inOrder(repository);
+        order.verify(repository).lockAllTablesForStateReplacement();
+        order.verify(repository).hasActiveEvaluations();
+        order.verify(repository).hasActiveVerificationWork();
+        order.verify(repository).clearAll();
     }
 
     /** 建立服务实例；目录交换使用真实实现，事务管理器记录独立提交行为而不连接数据库。 */

@@ -117,6 +117,19 @@ public class DemoStateRepository {
     }
 
     /**
+     * 在 reset/import 独立事务内一次锁定固定七表，阻止未参与单进程文件协调器的普通 DB 写入穿过状态替换。
+     *
+     * <p>SQL 表名只由 {@link SnapshotTable#values()} 按固定顺序组成，不接受 manifest、HTTP 或方法参数的表标识符。
+     * ACCESS EXCLUSIVE 只在 test-profile 管理事务的短时数据替换阶段持有，不覆盖 ZIP 网络上传或下载。
+     */
+    public void lockAllTablesForStateReplacement() {
+        String tables = java.util.Arrays.stream(SnapshotTable.values())
+                .map(table -> "test." + table.tableName())
+                .collect(java.util.stream.Collectors.joining(", "));
+        jdbcTemplate.execute("lock table " + tables + " in access exclusive mode");
+    }
+
+    /**
      * 在同一数据库事务中按既有外键顺序清理比赛数据。
      *
      * <p>skill_version 在删除前先解除自引用和注册评测引用，随后才能清理版本及其父级 evaluation_run；顺序不得由调用方改变。

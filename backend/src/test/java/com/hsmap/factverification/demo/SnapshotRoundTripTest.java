@@ -106,6 +106,7 @@ class SnapshotRoundTripTest {
                         SnapshotTable.EVIDENCE_SNAPSHOT,
                         SnapshotTable.RELEASE_BINDING);
         assertThat(targetRepository.skillReferencesRestored()).isTrue();
+        assertThat(targetRepository.lockBeforeFirstInsert()).isTrue();
     }
 
     /**
@@ -119,11 +120,13 @@ class SnapshotRoundTripTest {
         UUID taskId = UUID.randomUUID();
         Path sourceStorage = temporaryRoot.resolve("rollback-source");
         Path targetStorage = temporaryRoot.resolve("rollback-target");
+        UUID childSkillId = UUID.randomUUID();
         write(sourceStorage.resolve("uploads/" + taskId + "/material.md"), "material".getBytes(StandardCharsets.UTF_8));
+        writeFrozenSkillDirectories(sourceStorage, childSkillId);
         EnumMap<SnapshotTable, List<String>> sourceRows = sampleRows(
                 taskId,
                 UUID.randomUUID(),
-                UUID.randomUUID(),
+                childSkillId,
                 UUID.randomUUID(),
                 sourceStorage
                         .resolve("uploads/" + taskId + "/material.md")
@@ -148,19 +151,21 @@ class SnapshotRoundTripTest {
     /**
      * 测试场景：数据库行已写入后，第二个正式目录在原子交换前意外变为非空。
      * 前置条件：仓储替身在最后一表插入时模拟并发运行产物，迫使文件交换中途失败。
-     * 期望结果：已移动的 uploads 被撤销，事务回滚导入行，但本次未安装的并发文件被保留。
-     * 断言重点：补偿只撤销本次确认已安装的目录，不能无条件清除其他请求产物。
+     * 期望结果：事务回滚导入行，并恢复 prepare 前三个目录均缺失的精确形态。
+     * 断言重点：普通文件生产者受共享读锁保护，写锁内测试替身注入的异常文件属于本次破坏性操作现场，恢复时不得遗留。
      */
     @Test
     void restoresBlankStateWhenManagedDirectorySwapFails() throws Exception {
         UUID taskId = UUID.randomUUID();
         Path sourceStorage = temporaryRoot.resolve("swap-source");
         Path targetStorage = temporaryRoot.resolve("swap-target");
+        UUID childSkillId = UUID.randomUUID();
         write(sourceStorage.resolve("uploads/" + taskId + "/material.md"), "material".getBytes(StandardCharsets.UTF_8));
+        writeFrozenSkillDirectories(sourceStorage, childSkillId);
         EnumMap<SnapshotTable, List<String>> sourceRows = sampleRows(
                 taskId,
                 UUID.randomUUID(),
-                UUID.randomUUID(),
+                childSkillId,
                 UUID.randomUUID(),
                 sourceStorage
                         .resolve("uploads/" + taskId + "/material.md")
@@ -187,7 +192,7 @@ class SnapshotRoundTripTest {
 
         assertThat(targetRepository.rows().values()).allMatch(List::isEmpty);
         assertThat(targetStorage.resolve("uploads")).doesNotExist();
-        assertThat(targetStorage.resolve("skill-snapshots/concurrent.txt")).exists();
+        assertThat(targetStorage.resolve("skill-snapshots/concurrent.txt")).doesNotExist();
         assertThat(targetStorage.resolve("skill-runtime")).doesNotExist();
     }
 
@@ -202,11 +207,13 @@ class SnapshotRoundTripTest {
         UUID taskId = UUID.randomUUID();
         Path sourceStorage = temporaryRoot.resolve("serialized-source");
         Path targetStorage = temporaryRoot.resolve("serialized-target");
+        UUID childSkillId = UUID.randomUUID();
         write(sourceStorage.resolve("uploads/" + taskId + "/material.md"), "material".getBytes(StandardCharsets.UTF_8));
+        writeFrozenSkillDirectories(sourceStorage, childSkillId);
         EnumMap<SnapshotTable, List<String>> sourceRows = sampleRows(
                 taskId,
                 UUID.randomUUID(),
-                UUID.randomUUID(),
+                childSkillId,
                 UUID.randomUUID(),
                 sourceStorage.resolve("uploads/" + taskId + "/material.md").toAbsolutePath().normalize());
         ByteArrayOutputStream zip = new ByteArrayOutputStream();
@@ -254,11 +261,13 @@ class SnapshotRoundTripTest {
         UUID taskId = UUID.randomUUID();
         Path sourceStorage = temporaryRoot.resolve("concurrent-source");
         Path targetStorage = temporaryRoot.resolve("concurrent-target");
+        UUID childSkillId = UUID.randomUUID();
         write(sourceStorage.resolve("uploads/" + taskId + "/material.md"), "material".getBytes(StandardCharsets.UTF_8));
+        writeFrozenSkillDirectories(sourceStorage, childSkillId);
         EnumMap<SnapshotTable, List<String>> sourceRows = sampleRows(
                 taskId,
                 UUID.randomUUID(),
-                UUID.randomUUID(),
+                childSkillId,
                 UUID.randomUUID(),
                 sourceStorage.resolve("uploads/" + taskId + "/material.md").toAbsolutePath().normalize());
         ByteArrayOutputStream zip = new ByteArrayOutputStream();
@@ -350,9 +359,9 @@ class SnapshotRoundTripTest {
                 SnapshotTable.SKILL_VERSION,
                 List.of(
                         "{\"id\":\"" + parentSkillId
-                                + "\",\"parent_version_id\":null,\"registered_evaluation_id\":null,\"references_json\":[{\"name\":\"父版本\"}],\"created_at\":\"2026-08-13T12:01:00Z\"}",
+                                + "\",\"status\":\"DRAFT\",\"parent_version_id\":null,\"registered_evaluation_id\":null,\"references_json\":[{\"name\":\"父版本\"}],\"created_at\":\"2026-08-13T12:01:00Z\"}",
                         "{\"id\":\"" + childSkillId + "\",\"parent_version_id\":\"" + parentSkillId
-                                + "\",\"registered_evaluation_id\":\"" + evaluationId
+                                + "\",\"status\":\"CANDIDATE\",\"registered_evaluation_id\":\"" + evaluationId
                                 + "\",\"references_json\":[{\"name\":\"子版本\"}],\"created_at\":\"2026-08-13T12:02:00Z\"}"));
         rows.put(
                 SnapshotTable.EVALUATION_RUN,
@@ -420,6 +429,12 @@ class SnapshotRoundTripTest {
         Files.write(path, content);
     }
 
+    /** 为非 DRAFT 样例同时建立 snapshot/runtime 双目录，符合可恢复快照的冻结文件不变量。 */
+    private static void writeFrozenSkillDirectories(Path storageRoot, UUID versionId) throws Exception {
+        write(storageRoot.resolve("skill-snapshots/" + versionId + "/skill.md"), "snapshot".getBytes(StandardCharsets.UTF_8));
+        write(storageRoot.resolve("skill-runtime/" + versionId + "/SKILL.md"), "runtime".getBytes(StandardCharsets.UTF_8));
+    }
+
     /** 断言失败补偿后三个目录没有业务文件，只允许保留 .gitkeep。 */
     private static void assertManagedDirectoriesBlank(Path storageRoot) throws Exception {
         for (String directory : List.of("uploads", "skill-snapshots", "skill-runtime")) {
@@ -468,6 +483,8 @@ class SnapshotRoundTripTest {
         private CountDownLatch allowFirstInsert;
         private boolean firstInsertPaused;
         private int clearAllCalls;
+        private boolean tableLockAcquired;
+        private boolean lockBeforeFirstInsert = true;
 
         private InMemorySnapshotRepository(Map<SnapshotTable, List<String>> initialRows) {
             super(mock(JdbcTemplate.class));
@@ -485,6 +502,7 @@ class SnapshotRoundTripTest {
 
         @Override
         public void insertRow(SnapshotTable table, String json) {
+            lockBeforeFirstInsert &= tableLockAcquired;
             if (!firstInsertPaused && firstInsertEntered != null) {
                 firstInsertPaused = true;
                 firstInsertEntered.countDown();
@@ -508,6 +526,11 @@ class SnapshotRoundTripTest {
             if (table == SnapshotTable.RELEASE_BINDING && afterReleaseInsert != null) {
                 afterReleaseInsert.run();
             }
+        }
+
+        @Override
+        public void lockAllTablesForStateReplacement() {
+            tableLockAcquired = true;
         }
 
         @Override
@@ -588,6 +611,10 @@ class SnapshotRoundTripTest {
 
         private int clearAllCalls() {
             return clearAllCalls;
+        }
+
+        private boolean lockBeforeFirstInsert() {
+            return lockBeforeFirstInsert;
         }
 
         /** 在最后一张表插入后、文件交换前触发可控测试动作。 */

@@ -11,7 +11,11 @@ import com.hsmap.factverification.config.WorkbenchProperties;
 import com.hsmap.factverification.shared.ServiceException;
 import java.io.ByteArrayInputStream;
 import java.io.ByteArrayOutputStream;
+import java.io.InputStream;
+import java.io.OutputStream;
 import java.net.URI;
+import java.nio.ByteBuffer;
+import java.nio.ByteOrder;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Path;
@@ -23,6 +27,11 @@ import java.util.List;
 import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CopyOnWriteArrayList;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
@@ -63,6 +72,7 @@ class SnapshotArchiveServiceTest {
 
         repository.exportRows(SnapshotTable.CLAIM, row -> {});
         repository.insertRow(SnapshotTable.CLAIM, "{\"id\":\"00000000-0000-0000-0000-000000000001\"}");
+        repository.lockAllTablesForStateReplacement();
 
         verify(jdbcTemplate)
                 .query(
@@ -75,6 +85,27 @@ class SnapshotArchiveServiceTest {
                                 "insert into test.claim select imported.* from jsonb_populate_record(null::test.claim,"
                                         + " ?::jsonb) imported"),
                         org.mockito.ArgumentMatchers.eq("{\"id\":\"00000000-0000-0000-0000-000000000001\"}"));
+        verify(jdbcTemplate)
+                .execute(
+                        "lock table test.verification_task, test.skill_version, test.evaluation_run,"
+                                + " test.verification_run, test.claim, test.evidence_snapshot, test.release_binding"
+                                + " in access exclusive mode");
+    }
+
+    /**
+     * 测试场景：ZIP 仅用大量中央目录记录声明 2,001 个 entry，不提供 local file data。
+     * 前置条件：归档很小，EOCD 结构完整，但中央目录记录故意无效，Commons ZipFile 若被打开会进入索引构建。
+     * 期望结果：服务只读取文件尾 EOCD 就以 entry 上限拒绝。
+     * 断言重点：异常必须是预检的“文件数量超过限制”，而不是 Commons 解析错误。
+     */
+    @Test
+    void rejectsEocdEntryCountBeforeCommonsBuildsCentralDirectoryIndex() throws Exception {
+        Path zip = writeCentralDirectoryOnlyZip(2_001);
+
+        assertThatThrownBy(() -> archive(mock(DemoStateRepository.class), mock(DemoStateService.class))
+                        .validateAndStage(zip))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("文件数量超过限制");
     }
 
     /**
@@ -391,6 +422,108 @@ class SnapshotArchiveServiceTest {
     }
 
     /**
+     * 测试场景：数据库快照声明 CANDIDATE Skill，但冻结快照或运行目录缺失。
+     * 前置条件：Skill JSONL 含有真实 id 和冻结状态，其他六表为空。
+     * 期望结果：导出失败关闭，不产生缺失 Skill 物理状态的快照。
+     * 断言重点：CANDIDATE/STABLE/ARCHIVED 均必须同时有两个受控真实目录，不得静默忽略。
+     */
+    @Test
+    void rejectsExportWhenFrozenSkillDirectoriesAreMissing() throws Exception {
+        UUID versionId = UUID.randomUUID();
+        DemoStateRepository repository = repositoryWithSingleSkill(versionId, "CANDIDATE");
+
+        assertThatThrownBy(() -> archive(repository, mock(DemoStateService.class))
+                        .exportTo(new ByteArrayOutputStream()))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("冻结 Skill 目录缺失");
+    }
+
+    /**
+     * 测试场景：DRAFT 行读取完成后，磁盘上后来出现了同 id 的两个目录。
+     * 前置条件：目录内含可识别文本，但数据库快照明确该版本仍为 DRAFT。
+     * 期望结果：ZIP 不包含任何该 id 的 Skill 文件。
+     * 断言重点：文件决策同时受 id 与 status 约束，不能仅凭磁盘目录存在就打包。
+     */
+    @Test
+    void excludesDirectoriesThatAppearForDraftSkill() throws Exception {
+        UUID versionId = UUID.randomUUID();
+        Path snapshot = temporaryRoot.resolve("storage/skill-snapshots/" + versionId + "/SKILL.md");
+        Path runtime = temporaryRoot.resolve("storage/skill-runtime/" + versionId + "/SKILL.md");
+        Files.createDirectories(snapshot.getParent());
+        Files.createDirectories(runtime.getParent());
+        Files.writeString(snapshot, "draft-late", StandardCharsets.UTF_8);
+        Files.writeString(runtime, "draft-late", StandardCharsets.UTF_8);
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        archive(repositoryWithSingleSkill(versionId, "DRAFT"), mock(DemoStateService.class)).exportTo(output);
+
+        assertThat(readZip(output.toByteArray()).keySet())
+                .noneMatch(name -> name.contains(versionId.toString()));
+    }
+
+    /**
+     * 测试场景：导入客户端迟迟不提供完整 ZIP 字节。
+     * 前置条件：输入流在首次读取暂停，另一普通文件生产操作使用同一协调器读锁。
+     * 期望结果：普通操作在上传仍阻塞时立即完成，导入后续再进入管理写锁。
+     * 断言重点：原始 ZIP 落盘和不可信校验不得占用管理写锁。
+     */
+    @Test
+    void doesNotHoldManagementLockWhileReadingSlowImportInput() throws Exception {
+        byte[] archiveBytes = zipBytes(validArchiveEntries(SnapshotManifest.FORMAT_VERSION));
+        CountDownLatch inputEntered = new CountDownLatch(1);
+        CountDownLatch allowInput = new CountDownLatch(1);
+        InputStream slowInput = new BlockingInputStream(archiveBytes, inputEntered, allowInput);
+        DemoOperationCoordinator coordinator = new DemoOperationCoordinator();
+        SnapshotArchiveService archive = archive(
+                mock(DemoStateRepository.class),
+                mock(DemoStateService.class),
+                new RecordingTransactionManager(),
+                coordinator);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> importing = executor.submit(() -> archive.importFrom(slowInput, "导入快照"));
+            assertThat(inputEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<?> ordinaryFileWrite = executor.submit(() -> coordinator.duringFileProduction(() -> {}));
+
+            ordinaryFileWrite.get(1, TimeUnit.SECONDS);
+            allowInput.countDown();
+            importing.get(5, TimeUnit.SECONDS);
+        } finally {
+            allowInput.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    /**
+     * 测试场景：StreamingResponseBody 的客户端输出在首个字节后暂停。
+     * 前置条件：服务已在本地受控临时 ZIP 中完成数据库快照，普通文件生产者竞争读锁。
+     * 期望结果：客户端仍阻塞时普通操作可完成，随后释放输出并清理临时根。
+     * 断言重点：管理写锁只覆盖生成本地快照，不覆盖慢下载。
+     */
+    @Test
+    void doesNotHoldManagementLockWhileWritingSlowClientOutput() throws Exception {
+        CountDownLatch outputEntered = new CountDownLatch(1);
+        CountDownLatch allowOutput = new CountDownLatch(1);
+        OutputStream slowOutput = new BlockingOutputStream(outputEntered, allowOutput);
+        DemoOperationCoordinator coordinator = new DemoOperationCoordinator();
+        SnapshotArchiveService archive = archive(
+                emptyRepository(), mock(DemoStateService.class), new RecordingTransactionManager(), coordinator);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> exporting = executor.submit(() -> archive.exportTo(slowOutput));
+            assertThat(outputEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<?> ordinaryFileWrite = executor.submit(() -> coordinator.duringFileProduction(() -> {}));
+
+            ordinaryFileWrite.get(1, TimeUnit.SECONDS);
+            allowOutput.countDown();
+            exporting.get(5, TimeUnit.SECONDS);
+        } finally {
+            allowOutput.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    /**
      * 测试场景：数据库或三个受管目录不为空时请求导入。
      * 前置条件：Task 4 状态服务的 requireBlank 以统一业务异常拒绝。
      * 期望结果：归档读取和数据库插入均不发生。
@@ -542,6 +675,22 @@ class SnapshotArchiveServiceTest {
         return repository;
     }
 
+    /** 构造只有一条 Skill 行的快照仓储，文件选择必须同时解释 id 与 status。 */
+    private static DemoStateRepository repositoryWithSingleSkill(UUID id, String status) throws Exception {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    SnapshotTable table = invocation.getArgument(0);
+                    DemoStateRepository.JsonRowConsumer consumer = invocation.getArgument(1);
+                    if (table == SnapshotTable.SKILL_VERSION) {
+                        consumer.accept("{\"id\":\"" + id + "\",\"status\":\"" + status + "\"}");
+                    }
+                    return null;
+                })
+                .when(repository)
+                .exportRows(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        return repository;
+    }
+
     /** 构造七张空表的合法 v1 归档，供单点破坏测试复用。 */
     private static Map<String, byte[]> validArchiveEntries(String formatVersion) throws Exception {
         Map<String, byte[]> entries = new LinkedHashMap<>();
@@ -577,6 +726,44 @@ class SnapshotArchiveServiceTest {
         return zip;
     }
 
+    /** 把小型合法归档写到内存，仅用于慢输入锁边界测试。 */
+    private static byte[] zipBytes(Map<String, byte[]> entries) throws Exception {
+        ByteArrayOutputStream bytes = new ByteArrayOutputStream();
+        try (ZipOutputStream output = new ZipOutputStream(bytes)) {
+            for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+                output.putNextEntry(new ZipEntry(entry.getKey()));
+                output.write(entry.getValue());
+                output.closeEntry();
+            }
+        }
+        return bytes.toByteArray();
+    }
+
+    /**
+     * 只写入最小中央目录记录与 EOCD，不写 local header/data。
+     *
+     * <p>该构造物不是可解压归档；它专门证明 EOCD entry 上限在 Commons Compress 构建中央目录索引前生效。
+     */
+    private Path writeCentralDirectoryOnlyZip(int entryCount) throws Exception {
+        int centralDirectorySize = Math.multiplyExact(entryCount, 46);
+        ByteBuffer bytes = ByteBuffer.allocate(centralDirectorySize + 22).order(ByteOrder.LITTLE_ENDIAN);
+        for (int index = 0; index < entryCount; index++) {
+            bytes.putInt(0x02014b50);
+            bytes.position(bytes.position() + 42);
+        }
+        bytes.putInt(0x06054b50);
+        bytes.putShort((short) 0);
+        bytes.putShort((short) 0);
+        bytes.putShort((short) entryCount);
+        bytes.putShort((short) entryCount);
+        bytes.putInt(centralDirectorySize);
+        bytes.putInt(0);
+        bytes.putShort((short) 0);
+        Path zip = Files.createTempFile(temporaryRoot, "central-directory-only-", ".zip");
+        Files.write(zip, bytes.array());
+        return zip;
+    }
+
     /** 读取导出结果的全部 entry，测试数据规模很小，不影响生产流式实现约束。 */
     private static Map<String, byte[]> readZip(byte[] archive) throws Exception {
         Map<String, byte[]> entries = new LinkedHashMap<>();
@@ -597,6 +784,94 @@ class SnapshotArchiveServiceTest {
 
     /** 测试 ZIP 中一个允许重复规范化目标的原始 entry。 */
     private record ArchiveEntry(String path, byte[] content) {}
+
+    /** 首次读取前发布闩锁并暂停，用于观察网络慢输入期间的协调锁。 */
+    private static final class BlockingInputStream extends java.io.InputStream {
+        private final byte[] content;
+        private final CountDownLatch entered;
+        private final CountDownLatch proceed;
+        private int offset;
+        private boolean blocked;
+
+        private BlockingInputStream(byte[] content, CountDownLatch entered, CountDownLatch proceed) {
+            this.content = content;
+            this.entered = entered;
+            this.proceed = proceed;
+        }
+
+        @Override
+        public int read() throws java.io.IOException {
+            byte[] one = new byte[1];
+            int read = read(one, 0, 1);
+            return read < 0 ? -1 : Byte.toUnsignedInt(one[0]);
+        }
+
+        @Override
+        public int read(byte[] buffer, int bufferOffset, int length) throws java.io.IOException {
+            blockOnce();
+            if (offset >= content.length) {
+                return -1;
+            }
+            int count = Math.min(length, content.length - offset);
+            System.arraycopy(content, offset, buffer, bufferOffset, count);
+            offset += count;
+            return count;
+        }
+
+        private void blockOnce() throws java.io.IOException {
+            if (blocked) {
+                return;
+            }
+            blocked = true;
+            entered.countDown();
+            try {
+                if (!proceed.await(5, TimeUnit.SECONDS)) {
+                    throw new java.io.IOException("慢输入测试等待超时");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException("慢输入测试被中断", exception);
+            }
+        }
+    }
+
+    /** 首次写客户端前暂停，用于证明临时 ZIP 复制阶段已释放管理写锁。 */
+    private static final class BlockingOutputStream extends OutputStream {
+        private final CountDownLatch entered;
+        private final CountDownLatch proceed;
+        private boolean blocked;
+
+        private BlockingOutputStream(CountDownLatch entered, CountDownLatch proceed) {
+            this.entered = entered;
+            this.proceed = proceed;
+        }
+
+        @Override
+        public void write(int value) throws java.io.IOException {
+            blockOnce();
+        }
+
+        @Override
+        public void write(byte[] buffer, int offset, int length) throws java.io.IOException {
+            blockOnce();
+        }
+
+        private void blockOnce() throws java.io.IOException {
+            if (blocked) {
+                return;
+            }
+            blocked = true;
+            entered.countDown();
+            try {
+                if (!proceed.await(5, TimeUnit.SECONDS)) {
+                    throw new java.io.IOException("慢输出测试等待超时");
+                }
+            } catch (InterruptedException exception) {
+                Thread.currentThread().interrupt();
+                throw new java.io.IOException("慢输出测试被中断", exception);
+            }
+        }
+    }
 
     /** 为 TransactionTemplate 提供不连接数据库的同步提交/回滚边界。 */
     private static final class RecordingTransactionManager extends AbstractPlatformTransactionManager {

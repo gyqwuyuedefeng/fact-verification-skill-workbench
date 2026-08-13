@@ -6,6 +6,10 @@ import com.hsmap.factverification.shared.ServiceException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.util.LinkedHashMap;
+import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.junit.jupiter.api.Assumptions;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
@@ -74,5 +78,51 @@ class ManagedStorageSwapTest {
         org.assertj.core.api.Assertions.assertThat(Files.isRegularFile(uploads.resolve(".gitkeep"), LinkOption.NOFOLLOW_LINKS))
                 .isFalse();
         org.assertj.core.api.Assertions.assertThat(swap.blankState().get("uploads")).isFalse();
+    }
+
+    /**
+     * 测试场景：导入前 uploads 只有普通 .gitkeep，skill-snapshots 缺失，第二个快照目录安装移动失败。
+     * 前置条件：使用可控原子移动替身，允许三个备份移动和第一个安装，仅在第二个安装失败。
+     * 期望结果：调用方恢复后，uploads 精确回到 .gitkeep，原缺失目录仍缺失，不留下部分安装文件。
+     * 断言重点：正式目标在安装前先备份，不能先 delete 导致原空白形态丢失。
+     */
+    @Test
+    void restoresGitkeepAndMissingShapesWhenSnapshotInstallMoveFails() throws Exception {
+        Files.createDirectories(storageRoot.resolve("uploads"));
+        Files.writeString(storageRoot.resolve("uploads/.gitkeep"), "");
+        Files.createDirectories(storageRoot.resolve("skill-runtime"));
+        Files.writeString(storageRoot.resolve("skill-runtime/.gitkeep"), "");
+        Path staged = storageRoot.resolve("staged");
+        Map<String, Path> stagedDirectories = new LinkedHashMap<>();
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            Path source = staged.resolve(directory);
+            Files.createDirectories(source);
+            Files.writeString(source.resolve("snapshot.txt"), directory);
+            stagedDirectories.put(directory, source);
+        }
+        AtomicInteger moves = new AtomicInteger();
+        ManagedStorageSwap swap = new ManagedStorageSwap(storageRoot, (source, target) -> {
+            int attempt = moves.incrementAndGet();
+            if (attempt == 5) {
+                throw new java.nio.file.AtomicMoveNotSupportedException(
+                        source.toString(), target.toString(), "模拟失败");
+            }
+            Files.move(source, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+        });
+        ManagedStorageSwap.PreparedStorageSwap prepared = swap.prepare(UUID.randomUUID());
+
+        assertThatThrownBy(() -> swap.replaceWith(prepared, stagedDirectories))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("安装失败");
+        swap.restore(prepared);
+
+        org.assertj.core.api.Assertions.assertThat(storageRoot.resolve("uploads/.gitkeep"))
+                .isRegularFile();
+        org.assertj.core.api.Assertions.assertThat(storageRoot.resolve("uploads/snapshot.txt"))
+                .doesNotExist();
+        org.assertj.core.api.Assertions.assertThat(storageRoot.resolve("skill-snapshots"))
+                .doesNotExist();
+        org.assertj.core.api.Assertions.assertThat(storageRoot.resolve("skill-runtime/.gitkeep"))
+                .isRegularFile();
     }
 }

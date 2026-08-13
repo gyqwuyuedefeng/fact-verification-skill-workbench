@@ -12,6 +12,7 @@ import com.hsmap.factverification.claim.persistence.ClaimRepository;
 import com.hsmap.factverification.config.WorkbenchProperties;
 import com.hsmap.factverification.document.DeterministicDocumentParser;
 import com.hsmap.factverification.document.DocumentSnapshot;
+import com.hsmap.factverification.demo.DemoOperationCoordinator;
 import com.hsmap.factverification.release.InitialStableBootstrapService;
 import com.hsmap.factverification.release.persistence.ReleaseBindingRepository;
 import com.hsmap.factverification.run.persistence.VerificationRunRepository;
@@ -38,6 +39,7 @@ import java.util.concurrent.ConcurrentHashMap;
 import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -61,9 +63,43 @@ public class VerificationTaskService implements VerificationTaskUseCase {
     private final WorkbenchProperties properties;
     private final ObjectMapper objectMapper;
     private final CanonicalJsonHasher hasher;
+    private final DemoOperationCoordinator operationCoordinator;
     private final ExecutorService primaryExecutor;
     private final Map<UUID, List<RunEventView>> events = new ConcurrentHashMap<>();
 
+    /** 生产装配共享的文件状态协调器，使材料落盘周期不能与演示快照目录替换交错。 */
+    @Autowired
+    public VerificationTaskService(
+            VerificationTaskRepository tasks,
+            VerificationRunRepository runs,
+            ClaimRepository claims,
+            ReleaseBindingRepository releases,
+            SkillVersionRepository skillVersions,
+            DeterministicDocumentParser parser,
+            FactVerificationAgentRunner agentRunner,
+            WorkbenchProperties properties,
+            ObjectMapper objectMapper,
+            CanonicalJsonHasher hasher,
+            DemoOperationCoordinator operationCoordinator) {
+        this.tasks = tasks;
+        this.runs = runs;
+        this.claims = claims;
+        this.releases = releases;
+        this.skillVersions = skillVersions;
+        this.parser = parser;
+        this.agentRunner = agentRunner;
+        this.properties = properties;
+        this.objectMapper = objectMapper;
+        this.hasher = hasher;
+        this.operationCoordinator = operationCoordinator;
+        this.primaryExecutor = Executors.newSingleThreadExecutor(runnable -> {
+            Thread worker = new Thread(runnable, "fact-verification-primary");
+            worker.setDaemon(true);
+            return worker;
+        });
+    }
+
+    /** 保留既有单元测试构造方式；生产 Spring 通过带共享协调器的构造器装配。 */
     public VerificationTaskService(
             VerificationTaskRepository tasks,
             VerificationRunRepository runs,
@@ -75,21 +111,18 @@ public class VerificationTaskService implements VerificationTaskUseCase {
             WorkbenchProperties properties,
             ObjectMapper objectMapper,
             CanonicalJsonHasher hasher) {
-        this.tasks = tasks;
-        this.runs = runs;
-        this.claims = claims;
-        this.releases = releases;
-        this.skillVersions = skillVersions;
-        this.parser = parser;
-        this.agentRunner = agentRunner;
-        this.properties = properties;
-        this.objectMapper = objectMapper;
-        this.hasher = hasher;
-        this.primaryExecutor = Executors.newSingleThreadExecutor(runnable -> {
-            Thread worker = new Thread(runnable, "fact-verification-primary");
-            worker.setDaemon(true);
-            return worker;
-        });
+        this(
+                tasks,
+                runs,
+                claims,
+                releases,
+                skillVersions,
+                parser,
+                agentRunner,
+                properties,
+                objectMapper,
+                hasher,
+                new DemoOperationCoordinator());
     }
 
     /** 创建上传槽；重复 requestId 返回原任务。占位元数据会在第一次上传时原子替换。 */
@@ -118,6 +151,11 @@ public class VerificationTaskService implements VerificationTaskUseCase {
     @Override
     @Transactional
     public VerificationTaskView upload(UUID taskId, String requestId, MaterialUpload material) {
+        return operationCoordinator.duringFileProduction(() -> uploadDuringFileProduction(taskId, material));
+    }
+
+    /** 文件写入、解析及任务状态固定必须处于同一读锁周期，不能与管理目录安装或补偿交错。 */
+    private VerificationTaskView uploadDuringFileProduction(UUID taskId, MaterialUpload material) {
         VerificationTaskRepository.TaskState current = requiredTask(taskId);
         if ("READY".equals(current.status())) {
             return toView(current);

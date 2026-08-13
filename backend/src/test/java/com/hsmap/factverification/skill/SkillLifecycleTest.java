@@ -10,6 +10,7 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsmap.factverification.config.WorkbenchProperties;
+import com.hsmap.factverification.demo.DemoOperationCoordinator;
 import com.hsmap.factverification.persistence.JdbcJson;
 import com.hsmap.factverification.shared.ServiceException;
 import com.hsmap.factverification.skill.persistence.SkillVersionRepository;
@@ -20,6 +21,11 @@ import java.time.OffsetDateTime;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.mockito.Mockito;
@@ -180,7 +186,57 @@ class SkillLifecycleTest {
         Mockito.verify(repository, Mockito.never()).deleteDraft(frozenId);
     }
 
+    /**
+     * 测试场景：快照导入/reset 一类管理操作已持有写锁，管理员同时冻结 DRAFT。
+     * 前置条件：DRAFT 内容完整且数据库冻结更新可成功，写锁由闩锁稳定占有。
+     * 期望结果：写锁释放前不产生 snapshot/runtime 版本目录，释放后冻结正常完成。
+     * 断言重点：Skill 两个物理目录与状态更新的完整周期必须参与文件生产读锁。
+     */
+    @Test
+    void blocksFreezeFileLifecycleWhileManagementWriteLockIsHeld() throws Exception {
+        SkillVersionRepository repository = Mockito.mock(SkillVersionRepository.class);
+        UUID id = UUID.randomUUID();
+        when(repository.findVersion(id)).thenReturn(Optional.of(draft(id, null)));
+        when(repository.freezeDraft(eq(id), anyString(), anyString(), any())).thenReturn(1);
+        DemoOperationCoordinator coordinator = new DemoOperationCoordinator();
+        SkillVersionService service = service(repository, coordinator);
+        CountDownLatch managementEntered = new CountDownLatch(1);
+        CountDownLatch releaseManagement = new CountDownLatch(1);
+        CountDownLatch freezeStarted = new CountDownLatch(1);
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> management = executor.submit(() -> coordinator.exclusively(() -> {
+                managementEntered.countDown();
+                await(releaseManagement);
+            }));
+            assertThat(managementEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<?> freezing = executor.submit(() -> {
+                freezeStarted.countDown();
+                service.freeze(id);
+            });
+            assertThat(freezeStarted.await(5, TimeUnit.SECONDS)).isTrue();
+            Thread.sleep(100);
+
+            assertThat(tempDir.resolve("skill-snapshots/" + id)).doesNotExist();
+            assertThat(tempDir.resolve("skill-runtime/" + id)).doesNotExist();
+            releaseManagement.countDown();
+            management.get(5, TimeUnit.SECONDS);
+            freezing.get(5, TimeUnit.SECONDS);
+            assertThat(tempDir.resolve("skill-snapshots/" + id)).isDirectory();
+            assertThat(tempDir.resolve("skill-runtime/" + id)).isDirectory();
+        } finally {
+            releaseManagement.countDown();
+            executor.shutdownNow();
+        }
+    }
+
     private SkillVersionService service(SkillVersionRepository repository) throws Exception {
+        return service(repository, new DemoOperationCoordinator());
+    }
+
+    /** 为文件生产并发测试显式注入与管理操作共享的协调器。 */
+    private SkillVersionService service(
+            SkillVersionRepository repository, DemoOperationCoordinator coordinator) throws Exception {
         Path source = tempDir.resolve("source");
         Files.createDirectories(source.resolve("references"));
         Files.writeString(
@@ -198,7 +254,20 @@ class SkillLifecycleTest {
                 new FrozenSkillStorage(tempDir.resolve("skill-snapshots"), tempDir.resolve("skill-runtime")),
                 properties,
                 new ObjectMapper(),
-                new JdbcJson(new ObjectMapper()));
+                new JdbcJson(new ObjectMapper()),
+                coordinator);
+    }
+
+    /** 线程内等待管理锁释放，中断时保留标记并转换为明确失败。 */
+    private static void await(CountDownLatch latch) {
+        try {
+            if (!latch.await(5, TimeUnit.SECONDS)) {
+                throw new IllegalStateException("等待管理锁释放超时");
+            }
+        } catch (InterruptedException exception) {
+            Thread.currentThread().interrupt();
+            throw new IllegalStateException("等待管理锁释放被中断", exception);
+        }
     }
 
     private static SkillVersionRepository.VersionRow draft(UUID id, UUID parentId) {
