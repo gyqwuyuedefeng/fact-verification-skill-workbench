@@ -1,0 +1,149 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://hsmap.internal/schemas/fact-verification-result.json",
+  "title": "企业材料事实核验结果",
+  "type": "object",
+  "additionalProperties": false,
+  "required": [
+    "runId",
+    "variant",
+    "documentSnapshotHash",
+    "evidenceSnapshotId",
+    "claims"
+  ],
+  "properties": {
+    "runId": { "type": "string", "format": "uuid" },
+    "variant": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["type", "identifier", "contentHash"],
+      "properties": {
+        "type": { "enum": ["BASELINE", "SKILL"] },
+        "identifier": { "type": "string", "minLength": 1 },
+        "contentHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" }
+      }
+    },
+    "documentSnapshotHash": { "type": "string", "pattern": "^[0-9a-f]{64}$" },
+    "evidenceSnapshotId": { "type": "string", "format": "uuid" },
+    "claims": {
+      "type": "array",
+      "items": { "$ref": "#/$defs/claim" }
+    }
+  },
+  "$defs": {
+    "locator": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["fileId"],
+      "properties": {
+        "fileId": { "type": "string", "minLength": 1 },
+        "page": { "type": ["integer", "null"], "minimum": 1 },
+        "sectionPath": {
+          "type": "array",
+          "items": { "type": "string" }
+        },
+        "paragraph": { "type": ["integer", "null"], "minimum": 1 },
+        "tableRow": { "type": ["integer", "null"], "minimum": 1 },
+        "slide": { "type": ["integer", "null"], "minimum": 1 },
+        "textBlock": { "type": ["integer", "null"], "minimum": 1 },
+        "sheet": { "type": ["string", "null"] },
+        "cellRange": { "type": ["string", "null"] },
+        "lineStart": { "type": ["integer", "null"], "minimum": 1 },
+        "lineEnd": { "type": ["integer", "null"], "minimum": 1 }
+      },
+      "anyOf": [
+        { "required": ["page"] },
+        { "required": ["paragraph"] },
+        { "required": ["tableRow"] },
+        { "required": ["slide"] },
+        { "required": ["sheet", "cellRange"] },
+        { "required": ["lineStart", "lineEnd"] }
+      ]
+    },
+    "normalizedClaim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["metric", "period", "operator", "value", "unit"],
+      "properties": {
+        "metric": { "type": "string", "minLength": 1 },
+        "period": { "type": "string", "minLength": 1 },
+        "operator": {
+          "enum": ["EQUALS", "GREATER_THAN", "GREATER_OR_EQUAL", "LESS_THAN", "LESS_OR_EQUAL", "RANGE", "EXISTS"]
+        },
+        "value": {},
+        "unit": { "type": ["string", "null"] },
+        "originalValue": {},
+        "originalUnit": { "type": ["string", "null"] }
+      }
+    },
+    "subject": {
+      "type": ["object", "null"],
+      "additionalProperties": false,
+      "required": ["companyId", "companyName"],
+      "properties": {
+        "companyId": { "type": "string", "minLength": 1 },
+        "companyName": { "type": "string", "minLength": 1 },
+        "unifiedSocialCreditCode": { "type": ["string", "null"] }
+      }
+    },
+    "evidence": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["source", "dataset", "recordId", "observedAt", "content"],
+      "properties": {
+        "source": { "const": "HS_ENTERPRISE_ES" },
+        "dataset": { "type": "string", "minLength": 1 },
+        "recordId": { "type": "string", "minLength": 1 },
+        "observedAt": { "type": "string", "format": "date-time" },
+        "asOf": { "type": ["string", "null"] },
+        "content": { "type": "object" }
+      }
+    },
+    "claim": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": [
+        "claimId",
+        "claimText",
+        "materialLocator",
+        "normalizedClaim",
+        "subject",
+        "status",
+        "riskFlags",
+        "evidence",
+        "explanation",
+        "requiresHumanIntervention"
+      ],
+      "properties": {
+        "claimId": { "type": "string", "minLength": 1 },
+        "claimText": { "type": "string", "minLength": 1 },
+        "materialLocator": { "$ref": "#/$defs/locator" },
+        "normalizedClaim": { "$ref": "#/$defs/normalizedClaim" },
+        "subject": { "$ref": "#/$defs/subject" },
+        "status": { "enum": ["VERIFIED", "CONFLICT", "INSUFFICIENT"] },
+        "riskFlags": {
+          "type": "array",
+          "uniqueItems": true,
+          "items": { "type": "string" }
+        },
+        "evidence": {
+          "type": "array",
+          "items": { "$ref": "#/$defs/evidence" }
+        },
+        "explanation": { "type": "string", "minLength": 1 },
+        "requiresHumanIntervention": { "type": "boolean" }
+      },
+      "allOf": [
+        {
+          "if": {
+            "properties": { "status": { "const": "VERIFIED" } },
+            "required": ["status"]
+          },
+          "then": {
+            "properties": { "evidence": { "minItems": 1 } }
+          }
+        }
+      ]
+    }
+  }
+}

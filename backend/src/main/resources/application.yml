@@ -1,0 +1,49 @@
+spring:
+  application:
+    name: fact-verification-backend
+  datasource:
+    url: ${APP_DB_URL:jdbc:postgresql://192.168.201.203:5432/kjjr_inx_brain?currentSchema=test}
+    username: ${APP_DB_USERNAME:}
+    password: ${APP_DB_PASSWORD:}
+    hikari:
+      schema: test
+      maximum-pool-size: 5
+  flyway:
+    enabled: true
+    default-schema: test
+    schemas: test
+    create-schemas: false
+    clean-disabled: true
+    table: flyway_schema_history_fact_verification
+  servlet:
+    multipart:
+      max-file-size: 30MB
+      max-request-size: 30MB
+  cloud:
+    nacos:
+      discovery:
+        register-enabled: false
+
+server:
+  port: ${BACKEND_PORT:19090}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+workbench:
+  database:
+    expected-name: kjjr_inx_brain
+    expected-schema: test
+    verify-on-startup: true
+  storage-root: ${WORKBENCH_STORAGE_ROOT:data}
+  evaluation-manifest: ${EVALUATION_MANIFEST_PATH:evals/manifest.json}
+  skill-source-root: ${SKILL_SOURCE_ROOT:skills/company-material-fact-check}
+  model:
+    url: ${LOCAL_MODEL_URL:}
+    endpoint-path: ${LOCAL_MODEL_ENDPOINT_PATH:/v1/chat/completions}
+    id: ${LOCAL_MODEL_ID:}
+    api-key: ${LOCAL_MODEL_API_KEY:}
+  mcp-endpoint: ${MCP_BASE_URL:http://127.0.0.1:19091}/mcp
