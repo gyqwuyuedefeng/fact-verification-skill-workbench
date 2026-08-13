@@ -8,6 +8,8 @@ data/skill-snapshots/*
 !data/skill-snapshots/.gitkeep
 data/skill-runtime/*
 !data/skill-runtime/.gitkeep
+data/.demo-import/
+data/.demo-reset/
 .env
 .env.*
 !.env.example

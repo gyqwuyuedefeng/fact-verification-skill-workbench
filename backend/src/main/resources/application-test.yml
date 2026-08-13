@@ -4,6 +4,10 @@ spring:
       discovery:
         register-enabled: false
 
+workbench:
+  demo-admin:
+    enabled: true
+
 logging:
   level:
     com.hsmap.factverification: INFO

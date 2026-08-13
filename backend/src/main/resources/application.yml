@@ -34,6 +34,12 @@ management:
         include: health,info
 
 workbench:
+  demo-admin:
+    enabled: false
+    demo-material-root: evals/demo-materials
+    max-archive-bytes: 209715200
+    max-entry-count: 2000
+    max-expanded-bytes: 524288000
   database:
     expected-name: kjjr_inx_brain
     expected-schema: test
