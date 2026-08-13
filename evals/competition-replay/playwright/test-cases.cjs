@@ -2,7 +2,15 @@ const path = require('node:path')
 
 const demoMaterialRoot = path.resolve(__dirname, '..', '..', 'demo-materials')
 
+const demoStateCases = Object.freeze({
+  route: '/admin/demo-state',
+  emptyLabel: '当前业务状态为空',
+  builtinNotice: '不是本次现场重新生成',
+  resetPhrase: '清空全部比赛数据',
+})
+
 module.exports = {
+  demoStateCases,
   textFacts: `请逐条核验以下材料中的明确企业事实，只能使用企业证据工具，不要使用模型记忆：
 
 科大讯飞股份有限公司统一社会信用代码为 91340000711771143J。
