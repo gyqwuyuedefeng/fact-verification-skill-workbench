@@ -3,7 +3,7 @@ import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
 import { routeLocationKey, routerKey } from 'vue-router'
 
 import { reportUrl } from '../api/evaluation'
-import { metricLabel, shortId, skillVersionLabel, statusLabel } from '../presentation/labels'
+import { metricLabel, shortId, skillVersionLabel, statusLabel, variantLabel } from '../presentation/labels'
 import { useEvaluationStore } from '../stores/evaluation'
 import { useSkillStore } from '../stores/skill'
 import type { CoreMetrics, EvaluationSample, MetricValue } from '../types/evaluation'
@@ -183,18 +183,18 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
               <div class="panel-heading"><span class="step-index">01</span><div><strong>新建同条件评测</strong><small>唯一变化：基线指令或冻结 Skill</small></div></div>
               <label class="field-label" for="dataset-version">金标数据集</label>
               <input id="dataset-version" v-model="datasetVersion" class="text-input" readonly />
-              <label class="field-label" for="stable-version">Stable 版本</label>
+              <label class="field-label" for="stable-version">稳定版（STABLE）版本</label>
               <select id="stable-version" v-model="stableVersionId" data-test="stable-version" class="text-input">
-                <option value="">首次建立 Stable（不纳入本次评测）</option>
+                <option value="">首次建立稳定版（STABLE）（不纳入本次评测）</option>
                 <option v-for="item in stableVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option>
               </select>
-              <label class="field-label" for="candidate-version">Candidate 版本</label>
+              <label class="field-label" for="candidate-version">候选版（CANDIDATE）版本</label>
               <select id="candidate-version" v-model="candidateVersionId" data-test="candidate-version" class="text-input">
                 <option value="" disabled>请选择候选版</option>
                 <option v-for="item in candidateVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option>
               </select>
               <button class="primary-action" data-test="start-evaluation" :disabled="!candidateVersionId || store.creating" @click="start">
-                {{ store.creating ? '正在创建评测…' : stableVersionId ? '运行 BASELINE + Stable + Candidate' : '运行 BASELINE + 首个 Candidate' }}
+                {{ store.creating ? '正在创建评测…' : stableVersionId ? `运行${statusLabel('BASELINE')} + ${statusLabel('STABLE')} + ${statusLabel('CANDIDATE')}` : `运行${statusLabel('BASELINE')} + 首个${statusLabel('CANDIDATE')}` }}
               </button>
               <p v-if="store.error" class="error-message">{{ store.error }}</p>
             </section>
@@ -231,14 +231,14 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
             <div v-else class="metrics-table">
               <div class="metric-row metric-head"><span>变体</span><span v-for="column in metricColumns" :key="column.key">{{ metricLabel(column.key) }}</span></div>
               <div v-for="[variant, metrics] in metricRows" :key="variant" class="metric-row">
-                <strong>{{ variant }}</strong><span v-for="column in metricColumns" :key="column.key" :title="metrics[column.key].definition">{{ display(metrics[column.key]) }}</span>
+                <strong>{{ variantLabel(variant) }}</strong><span v-for="column in metricColumns" :key="column.key" :title="metrics[column.key].definition">{{ display(metrics[column.key]) }}</span>
               </div>
             </div>
           </section>
 
           <div class="evaluation-bottom-grid">
-            <section class="panel"><div class="panel-heading"><span class="step-index">04</span><div><strong>单样本下钻</strong><small>金标、各变体评分与原始输出</small></div></div><div v-if="!store.samples.length" class="compact-empty">选择完成批次后加载样本。</div><details v-for="sample in store.samples" :key="sample.sampleId" class="sample-drilldown"><summary><code>{{ sample.sampleId }}</code><span>金标 {{ statusLabel(sample.gold?.expectedStatus) }}</span></summary><p>{{ sample.gold?.material?.text ?? '材料文本未写入报告' }}</p><article v-for="[variant, result] in Object.entries(sample.variantResults)" :key="variant" class="sample-variant-result"><code>{{ variant }}</code><strong :class="{ failed: !result.score?.accurate }">{{ result.score?.accurate ? '评分通过' : '评分失败' }}</strong><span>{{ attemptStatus(result) }}</span><small>{{ result.attempts?.[0]?.durationMs ?? 0 }} ms · {{ result.attempts?.length ?? 0 }} 次</small><details class="raw-attempt"><summary>查看原始输出</summary><pre>{{ rawOutput(result.attempts?.[0]?.output) }}</pre></details></article></details></section>
-            <section class="panel"><div class="panel-heading"><span class="step-index">05</span><div><strong>Candidate 门禁</strong><small>硬检查原始原因</small></div></div><div v-if="!store.evaluation?.gateReasons?.length" class="compact-empty">等待门禁。</div><div v-for="check in store.evaluation?.gateReasons ?? []" :key="check.name" class="gate-row"><i :class="{ passed: check.passed }"></i><div><strong>{{ check.name }}</strong><small>{{ check.reason }}</small></div></div></section>
+            <section class="panel"><div class="panel-heading"><span class="step-index">04</span><div><strong>单样本下钻</strong><small>金标、各变体评分与原始输出</small></div></div><div v-if="!store.samples.length" class="compact-empty">选择完成批次后加载样本。</div><details v-for="sample in store.samples" :key="sample.sampleId" class="sample-drilldown"><summary><code>{{ sample.sampleId }}</code><span>金标 {{ statusLabel(sample.gold?.expectedStatus) }}</span></summary><p>{{ sample.gold?.material?.text ?? '材料文本未写入报告' }}</p><article v-for="[variant, result] in Object.entries(sample.variantResults)" :key="variant" class="sample-variant-result"><code>{{ variantLabel(variant) }}</code><strong :class="{ failed: !result.score?.accurate }">{{ result.score?.accurate ? '评分通过' : '评分失败' }}</strong><span>{{ attemptStatus(result) }}</span><small>{{ result.attempts?.[0]?.durationMs ?? 0 }} ms · {{ result.attempts?.length ?? 0 }} 次</small><details class="raw-attempt"><summary>查看原始输出</summary><pre>{{ rawOutput(result.attempts?.[0]?.output) }}</pre></details></article></details></section>
+            <section class="panel"><div class="panel-heading"><span class="step-index">05</span><div><strong>候选版（CANDIDATE）门禁</strong><small>硬检查原始原因</small></div></div><div v-if="!store.evaluation?.gateReasons?.length" class="compact-empty">等待门禁。</div><div v-for="check in store.evaluation?.gateReasons ?? []" :key="check.name" class="gate-row"><i :class="{ passed: check.passed }"></i><div><strong>{{ check.name }}</strong><small>{{ check.reason }}</small></div></div></section>
           </div>
         </div>
       </div>
@@ -258,7 +258,7 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
     </section>
 
     <section v-else class="panel admin-workspace">
-      <div class="panel-heading"><span class="step-index">Δ</span><div><strong>当前版本 vs 上一版 / Stable</strong><small>只在共同评测批次中给出直接优劣</small></div></div>
+      <div class="panel-heading"><span class="step-index">Δ</span><div><strong>当前版本 vs 上一版 / 稳定版（STABLE）</strong><small>只在共同评测批次中给出直接优劣</small></div></div>
       <div class="compare-query"><select v-model="leftVersionId" data-test="compare-left-version" class="text-input"><option value="" disabled>请选择基准版本</option><option v-for="item in frozenVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option></select><span>→</span><select v-model="rightVersionId" data-test="compare-right-version" class="text-input"><option value="" disabled>请选择目标版本</option><option v-for="item in frozenVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option></select><button class="primary-action compact" data-test="compare-versions" :disabled="!leftVersionId || !rightVersionId" @click="store.compareVersions(leftVersionId, rightVersionId)">对比</button></div>
       <template v-if="store.comparison">
         <div v-if="!store.comparison.comparable" class="comparison-warning"><strong>暂无共同评测</strong><span v-for="reason in store.comparison.reasons" :key="reason">{{ reason }}</span></div>

@@ -147,14 +147,14 @@ describe('EvaluationPage', () => {
     expect(wrapper.text()).toContain('人工介入率')
     expect(wrapper.text()).toContain('iflytek-basic')
     expect(wrapper.text()).toContain('金标 已核验（VERIFIED）')
-    expect(wrapper.text()).toContain('BASELINE')
+    expect(wrapper.text()).toContain('基线（BASELINE）')
     expect(wrapper.text()).toContain('存在冲突（CONFLICT）')
     expect(wrapper.text()).toContain('GATE 通过（PASS）')
     expect(wrapper.text()).toContain('评分失败')
     expect(wrapper.text()).toContain('导出报告')
   })
 
-  it('以 BASELINE、Stable、Candidate 创建评测', async () => {
+  it('以基线、稳定版和候选版创建评测，并显示中文标签', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const router = evaluationRouter()
@@ -167,6 +167,10 @@ describe('EvaluationPage', () => {
     const start = vi.spyOn(store, 'start').mockResolvedValue(run('evaluation-created', 'PENDING'))
     vi.spyOn(store, 'refreshEvaluation').mockResolvedValue()
     const wrapper = mount(EvaluationPage, { global: { plugins: [pinia, router] } })
+
+    expect(wrapper.text()).toContain('稳定版（STABLE）')
+    expect(wrapper.text()).toContain('候选版（CANDIDATE）')
+    expect(wrapper.text()).toContain('基线（BASELINE）')
 
     await wrapper.find('[data-test="stable-version"]').setValue('stable-v1')
     await wrapper.find('[data-test="candidate-version"]').setValue('candidate-v2')

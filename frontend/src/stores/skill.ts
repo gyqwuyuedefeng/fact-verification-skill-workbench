@@ -21,6 +21,14 @@ import type {
 
 const requestId = (prefix: string) => `${prefix}-${crypto.randomUUID()}`
 
+function matchesComparison(
+  comparison: VersionComparison,
+  targetVersionId: string,
+  baseVersionId: string,
+): boolean {
+  return comparison.targetVersionId === targetVersionId && comparison.baseVersionId === baseVersionId
+}
+
 export const useSkillStore = defineStore('skill', {
   state: () => ({
     versions: [] as SkillVersion[],
@@ -29,6 +37,7 @@ export const useSkillStore = defineStore('skill', {
     selectedVersionId: null as string | null,
     card: null as VersionCard | null,
     comparison: null as VersionComparison | null,
+    comparisonRequestGeneration: 0,
     busy: false,
     error: null as string | null,
   }),
@@ -98,28 +107,61 @@ export const useSkillStore = defineStore('skill', {
         this.busy = false
       }
     },
+    /** 版本对变化时使正在进行的请求失效，并立即隐藏上一版本对的摘要。 */
+    clearComparison() {
+      this.comparisonRequestGeneration += 1
+      this.comparison = null
+      this.error = null
+      this.busy = false
+    },
     /** 选择版本对时仅恢复服务端保存的摘要，不调用模型。 */
     async loadComparison(targetVersionId: string, baseVersionId: string) {
+      const generation = ++this.comparisonRequestGeneration
       this.busy = true
       this.error = null
+      this.comparison = null
       try {
-        this.comparison = await getSkillVersionComparison(targetVersionId, baseVersionId)
+        const comparison = await getSkillVersionComparison(targetVersionId, baseVersionId)
+        if (generation !== this.comparisonRequestGeneration) return
+        if (!matchesComparison(comparison, targetVersionId, baseVersionId)) {
+          this.error = '读取的升级说明与当前版本对不匹配'
+          return
+        }
+        this.comparison = comparison
+        if (comparison.errorCode) {
+          this.error = `升级说明生成失败（${comparison.errorCode}）`
+        }
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '读取升级说明失败'
+        if (generation === this.comparisonRequestGeneration) {
+          this.error = error instanceof Error ? error.message : '读取升级说明失败'
+        }
       } finally {
-        this.busy = false
+        if (generation === this.comparisonRequestGeneration) this.busy = false
       }
     },
     /** 管理员明确点击后才生成；失败时保留页面上已恢复的旧摘要。 */
     async generateComparison(targetVersionId: string, baseVersionId: string) {
+      const generation = ++this.comparisonRequestGeneration
       this.busy = true
       this.error = null
       try {
-        this.comparison = await compareSkillVersions(targetVersionId, baseVersionId)
+        const comparison = await compareSkillVersions(targetVersionId, baseVersionId)
+        if (generation !== this.comparisonRequestGeneration) return
+        if (!matchesComparison(comparison, targetVersionId, baseVersionId)) {
+          this.comparison = null
+          this.error = '生成的升级说明与当前版本对不匹配'
+          return
+        }
+        this.comparison = comparison
+        if (comparison.errorCode) {
+          this.error = `升级说明生成失败（${comparison.errorCode}）`
+        }
       } catch (error) {
-        this.error = error instanceof Error ? error.message : '生成升级说明失败'
+        if (generation === this.comparisonRequestGeneration) {
+          this.error = error instanceof Error ? error.message : '生成升级说明失败'
+        }
       } finally {
-        this.busy = false
+        if (generation === this.comparisonRequestGeneration) this.busy = false
       }
     },
   },

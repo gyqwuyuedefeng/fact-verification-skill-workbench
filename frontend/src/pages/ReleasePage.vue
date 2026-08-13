@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { skillVersionLabel, statusLabel } from '../presentation/labels'
+import { releaseActionLabel, skillVersionLabel, statusLabel } from '../presentation/labels'
 import { useEvaluationStore } from '../stores/evaluation'
 import { useReleaseStore } from '../stores/release'
 import { useSkillStore } from '../stores/skill'
@@ -58,17 +58,6 @@ function formatTime(value: string) {
   return new Date(value).toLocaleString('zh-CN', { hour12: false })
 }
 
-function releaseActionLabel(action: string): string {
-  const labels: Record<string, string> = {
-    INITIALIZE: '初始化',
-    REGISTER: '注册候选版',
-    SHADOW_START: '开启影子',
-    SHADOW_STOP: '停止影子',
-    PROMOTE: '晋升稳定版',
-    ROLLBACK: '回滚上一版',
-  }
-  return `${labels[action] ?? '未知操作'}（${action}）`
-}
 </script>
 
 <template>
@@ -114,7 +103,7 @@ function releaseActionLabel(action: string): string {
 
       <section class="panel release-history-panel">
         <div class="panel-heading"><span class="step-index">02</span><div><strong>发布历史</strong><small>追加记录，不覆盖</small></div></div>
-        <div v-for="item in store.history" :key="item.revision" class="version-row"><span class="version-status">R{{ item.revision }}</span><div><strong>{{ item.action }}</strong><small>{{ item.reason }}</small></div><code>{{ formatTime(item.createdAt) }}</code></div>
+        <div v-for="item in store.history" :key="item.revision" class="version-row"><span class="version-status">R{{ item.revision }}</span><div><strong>{{ releaseActionLabel(item.action) }}</strong><small>{{ item.reason }}</small></div><code>{{ formatTime(item.createdAt) }}</code></div>
         <div v-if="!store.history.length" class="compact-empty">暂无发布记录。</div>
       </section>
     </div>

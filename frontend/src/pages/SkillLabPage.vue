@@ -64,6 +64,7 @@ async function generateChangeSummary() {
 
 /** 版本对变化只读取已保存结果；模型调用由管理员按钮显式触发。 */
 watch([targetVersionId, baseVersionId], ([targetVersionId, baseVersionId]) => {
+  store.clearComparison()
   if (!targetVersionId || !baseVersionId || targetVersionId === baseVersionId) return
   void store.loadComparison(targetVersionId, baseVersionId)
 })

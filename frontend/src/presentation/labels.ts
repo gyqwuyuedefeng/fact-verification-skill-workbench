@@ -15,6 +15,16 @@ const statusLabels: Record<string, string> = {
   VERIFIED: '已核验',
   CONFLICT: '存在冲突',
   INSUFFICIENT: '证据不足',
+  BASELINE: '基线',
+}
+
+const releaseActionLabels: Record<string, string> = {
+  INITIALIZE: '初始化',
+  REGISTER: '注册候选版',
+  SHADOW_START: '开启影子',
+  SHADOW_STOP: '停止影子',
+  PROMOTE: '晋升稳定版',
+  ROLLBACK: '回滚上一版',
 }
 
 const metricLabels: Record<string, string> = {
@@ -38,6 +48,16 @@ export function metricLabel(value: string): string {
 /** 冻结版本选项保留状态、语义化版本和短 ID，避免仅靠中文名称选择错误版本。 */
 export function skillVersionLabel(version: Pick<SkillVersion, 'id' | 'version' | 'status'>): string {
   return `${statusLabel(version.status)} · ${version.version ?? '无版本号'} · ${shortId(version.id)}`
+}
+
+/** 发布历史操作同时显示中文业务含义和服务端不可变操作码。 */
+export function releaseActionLabel(value: string): string {
+  return `${releaseActionLabels[value] ?? '未知操作'}（${value}）`
+}
+
+/** 基线是固定评测变体，其他变体保留服务端版本标识便于追溯。 */
+export function variantLabel(value: string): string {
+  return value === 'BASELINE' ? statusLabel(value) : value
 }
 
 /** 在历史列表中压缩长标识，同时保留可辨识的固定前缀。 */

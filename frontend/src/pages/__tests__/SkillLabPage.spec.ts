@@ -5,6 +5,33 @@ import { beforeEach, describe, expect, it, vi } from 'vitest'
 import SkillLabPage from '../SkillLabPage.vue'
 import { useSkillStore } from '../../stores/skill'
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
+function comparison(targetVersionId: string, baseVersionId: string, headline = '已有升级摘要', errorCode: string | null = null) {
+  return {
+    targetVersionId,
+    baseVersionId,
+    deterministicDiff: '-旧规则\n+新规则',
+    summaryStatus: 'COMPLETED' as const,
+    modelId: 'gpt-5.6',
+    generatedAt: '2026-08-12T00:02:00Z',
+    persisted: true,
+    generatedSummary: { headline, changes: ['统一金额单位'], reviewRisks: ['复核历史材料'] },
+    advisory: '模型生成、仅供审核参考',
+    errorCode,
+  }
+}
+
+function response(body: unknown, ok = true): Response {
+  return { ok, status: ok ? 200 : 503, json: async () => body } as Response
+}
+
 describe('SkillLabPage', () => {
   beforeEach(() => setActivePinia(createPinia()))
 
@@ -278,7 +305,9 @@ describe('SkillLabPage', () => {
       advisory: '模型生成、仅供审核参考',
       errorCode: null,
     }
-    vi.spyOn(store, 'loadComparison').mockResolvedValue()
+    vi.spyOn(store, 'loadComparison').mockImplementation(async () => {
+      store.comparison = comparison('candidate-2', 'stable-1', '强化单位归一化')
+    })
     const compare = vi.spyOn(store, 'generateComparison').mockResolvedValue()
 
     const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
@@ -310,12 +339,14 @@ describe('SkillLabPage', () => {
     ]
     const loadComparison = vi.fn().mockResolvedValue(undefined)
     const generateComparison = vi.fn().mockResolvedValue(undefined)
-    Object.assign(store, { loadComparison, generateComparison })
+    const clearComparison = vi.fn()
+    Object.assign(store, { clearComparison, loadComparison, generateComparison })
     const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
 
     await wrapper.get('[data-test="target-version"]').setValue('candidate-1')
     await wrapper.get('[data-test="base-version"]').setValue('stable-1')
 
+    expect(clearComparison).toHaveBeenCalled()
     expect(loadComparison).toHaveBeenCalledWith('candidate-1', 'stable-1')
     expect(generateComparison).not.toHaveBeenCalled()
 
@@ -324,7 +355,7 @@ describe('SkillLabPage', () => {
     expect(generateComparison).toHaveBeenCalledWith('candidate-1', 'stable-1')
   })
 
-  it('生成升级说明失败时保留已有摘要并提示失败原因', async () => {
+  it('POST 返回模型业务失败时保留旧摘要并展示失败原因', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const store = useSkillStore()
@@ -340,23 +371,61 @@ describe('SkillLabPage', () => {
         createdAt: '2026-08-12T00:00:00Z', frozenAt: '2026-08-12T00:01:00Z',
       },
     ]
-    store.comparison = {
-      targetVersionId: 'candidate-1', baseVersionId: 'stable-1', deterministicDiff: '-旧规则\n+新规则',
-      summaryStatus: 'COMPLETED', modelId: 'gpt-5.6', generatedAt: '2026-08-12T00:02:00Z', persisted: true,
-      generatedSummary: { headline: '已有升级摘要', changes: ['统一金额单位'], reviewRisks: ['复核历史材料'] },
-      advisory: '模型生成、仅供审核参考', errorCode: null,
-    }
-    const generateComparison = vi.fn().mockImplementation(async () => {
-      store.error = '模型服务暂时不可用'
-    })
-    Object.assign(store, { loadComparison: vi.fn().mockResolvedValue(undefined), generateComparison })
+    store.comparison = comparison('candidate-1', 'stable-1')
+    vi.spyOn(store, 'load').mockResolvedValue()
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(comparison('candidate-1', 'stable-1')))
+      .mockResolvedValueOnce(response(
+        comparison('candidate-1', 'stable-1', '已有升级摘要', 'MODEL_SUMMARY_UNAVAILABLE'),
+      ))
+    vi.stubGlobal('fetch', fetchMock)
     const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
 
     await wrapper.get('[data-test="target-version"]').setValue('candidate-1')
     await wrapper.get('[data-test="base-version"]').setValue('stable-1')
+    await vi.waitFor(() => expect(store.busy).toBe(false))
     await wrapper.get('[data-test="generate-change-summary"]').trigger('click')
+    await vi.waitFor(() => expect(store.error).toContain('MODEL_SUMMARY_UNAVAILABLE'))
 
     expect(wrapper.text()).toContain('已有升级摘要')
-    expect(wrapper.text()).toContain('模型服务暂时不可用')
+    expect(wrapper.text()).toContain('MODEL_SUMMARY_UNAVAILABLE')
+    expect(store.comparison?.generatedSummary?.headline).toBe('已有升级摘要')
+    expect(fetchMock.mock.calls.find(([, init]) => init?.method === 'POST')).toBeDefined()
+    vi.unstubAllGlobals()
+  })
+
+  it('快速切换版本对时丢弃旧 GET 响应，并且切换期间不展示旧摘要', async () => {
+    const store = useSkillStore()
+    store.comparison = comparison('candidate-old', 'stable-old', '旧版本摘要')
+    const oldResponse = deferred<Response>()
+    const newResponse = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockReturnValueOnce(oldResponse.promise)
+      .mockReturnValueOnce(newResponse.promise))
+
+    const oldRequest = store.loadComparison('candidate-old', 'stable-old')
+    const newRequest = store.loadComparison('candidate-new', 'stable-new')
+    expect(store.comparison).toBeNull()
+
+    newResponse.resolve(response(comparison('candidate-new', 'stable-new', '新版本摘要')))
+    await newRequest
+    oldResponse.resolve(response(comparison('candidate-old', 'stable-old', '旧版本摘要')))
+    await oldRequest
+
+    expect(store.comparison?.targetVersionId).toBe('candidate-new')
+    expect(store.comparison?.generatedSummary?.headline).toBe('新版本摘要')
+    vi.unstubAllGlobals()
+  })
+
+  it('GET 失败时清除上一版本对的摘要，避免展示错配结果', async () => {
+    const store = useSkillStore()
+    store.comparison = comparison('candidate-old', 'stable-old', '旧版本摘要')
+    vi.stubGlobal('fetch', vi.fn().mockResolvedValue(response({ message: '读取失败' }, false)))
+
+    await store.loadComparison('candidate-new', 'stable-new')
+
+    expect(store.comparison).toBeNull()
+    expect(store.error).toContain('读取失败')
+    vi.unstubAllGlobals()
   })
 })

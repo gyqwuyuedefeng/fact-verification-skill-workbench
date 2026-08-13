@@ -45,13 +45,14 @@ describe('ReleaseWorkflow', () => {
     setActivePinia(pinia)
     const release = useReleaseStore()
     release.current = releaseState
-    release.history = [releaseState]
+    release.history = [{ ...releaseState, revision: 1, action: 'INITIALIZE' }, releaseState]
     const change = vi.spyOn(release, 'change').mockResolvedValue()
 
     const wrapper = mount(ReleasePage, { global: { plugins: [pinia] } })
 
     expect(wrapper.text()).toContain('候选版（CANDIDATE）不替换正式结果')
-    expect(wrapper.text()).toContain('SHADOW_START')
+    expect(wrapper.text()).toContain('初始化（INITIALIZE）')
+    expect(wrapper.text()).toContain('开启影子（SHADOW_START）')
     const button = wrapper.findAll('button').find((item) => item.text() === '晋升稳定版（STABLE）')
     await button?.trigger('click')
     expect(change).toHaveBeenCalledWith('promote', '同条件评测通过，进入真实材料影子验证')
