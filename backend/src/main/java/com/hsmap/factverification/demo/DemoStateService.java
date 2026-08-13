@@ -54,6 +54,8 @@ public class DemoStateService {
      * <p>目录先移动到 .demo-reset 暂存区，以便数据库事务失败时恢复；只有事务提交成功后才删除暂存数据。
      */
     public DemoStateView reset(String idempotencyKey, String confirmationPhrase) {
+        // 确认语是每次破坏性请求的独立安全边界，必须先于读取或写入幂等结果执行，不能被历史成功结果绕过。
+        requireExactConfirmationPhrase(confirmationPhrase);
         CompletableFuture<DemoStateView> result;
         boolean owner = false;
         synchronized (idempotencyMonitor) {
@@ -86,9 +88,6 @@ public class DemoStateService {
      * <p>只有独立事务的 executeWithoutResult 正常返回（即已完成 commit）后才会销毁目录暂存；异常路径始终恢复目录。
      */
     private DemoStateView performReset(String confirmationPhrase) {
-        if (!CONFIRMATION_PHRASE.equals(confirmationPhrase)) {
-            throw new ServiceException("DEMO_RESET_CONFIRMATION_INVALID", "确认短语必须为“清空全部比赛数据”");
-        }
         requireNoActiveWork();
         ManagedStorageSwap.PreparedStorageSwap prepared = storageSwap.prepare(UUID.randomUUID());
         try {
@@ -103,6 +102,13 @@ public class DemoStateService {
         }
         storageSwap.commit(prepared);
         return status();
+    }
+
+    /** 校验固定确认短语；失败时不创建幂等键，避免无效请求挤占有限的单进程安全容量。 */
+    private static void requireExactConfirmationPhrase(String confirmationPhrase) {
+        if (!CONFIRMATION_PHRASE.equals(confirmationPhrase)) {
+            throw new ServiceException("DEMO_RESET_CONFIRMATION_INVALID", "确认短语必须为“清空全部比赛数据”");
+        }
     }
 
     /** 等待并返回同键首次请求的稳定结果；首次失败也稳定复现同一业务或基础设施异常。 */

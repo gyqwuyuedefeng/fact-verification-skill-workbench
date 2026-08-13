@@ -27,3 +27,11 @@
 - 覆盖测试文件：`DemoStateServiceTest`（同键复用、并发、REQUIRES_NEW/commit、回滚）、`DemoStateApiTest`（三种条件装配及请求转发）、`ManagedStorageSwapTest`（路径边界与 `.gitkeep` 目录）。
 - 验证命令：`/mnt/g/Obsidian/code/01_System_Core/scripts/maven/run-wsl.sh --project /mnt/f/IdeaProjects/hsmap/standardized-products/fact-verification-skill-workbench/.worktrees/feat/001-evaluation-demo-snapshot --log /mnt/f/IdeaProjects/hsmap/.tmp/fact-verification-logs/task4-review-green.log -- -pl backend -am test -Dtest=DemoStateServiceTest,ManagedStorageSwapTest,DemoStateApiTest`。
 - 结果：14 项测试（API 4、服务 8、存储 2）均为 failures=0、errors=0，`BUILD SUCCESS`；随后执行 `git diff --check`。
+
+## 第二轮复审修复（Task 4）
+
+- 精确确认短语现在在任何幂等缓存读取或写入前校验：同键已成功后提交错误短语仍返回 `DEMO_RESET_CONFIRMATION_INVALID`；错误请求不会创建 Future 或占用 64 键容量，随后同一键的合法请求可首次执行。
+- 受管目录空判断仅忽略 `LinkOption.NOFOLLOW_LINKS` 下的普通 `.gitkeep` 文件；同名目录和符号链接均判为非空。符号链接测试在不支持链接的文件系统会通过 JUnit assumption 明确跳过。
+- 增加 65 个不同合法键的边界测试：前 64 个完成后，第 65 个返回 `DEMO_RESET_IDEMPOTENCY_LIMIT_REACHED`，不会淘汰旧键或额外调用 `clearAll`；测试使用 `ManagedStorageSwap` 替身避免重复文件系统交换。
+- 验证命令：`/mnt/g/Obsidian/code/01_System_Core/scripts/maven/run-wsl.sh --project /mnt/f/IdeaProjects/hsmap/standardized-products/fact-verification-skill-workbench/.worktrees/feat/001-evaluation-demo-snapshot --log /mnt/f/IdeaProjects/hsmap/.tmp/fact-verification-logs/task4-review2-green.log -- -pl backend -am test -Dtest=DemoStateServiceTest,ManagedStorageSwapTest,DemoStateApiTest`。
+- 结果：`DemoStateApiTest` 4 项、`DemoStateServiceTest` 11 项、`ManagedStorageSwapTest` 3 项，共 18 项 failures=0、errors=0、skipped=0，`BUILD SUCCESS`；随后执行 `git diff --check`。

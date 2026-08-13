@@ -174,6 +174,76 @@ class DemoStateServiceTest {
     }
 
     /**
+     * 测试场景：同一幂等键首次成功后，调用方错误地提交了不同的确认短语。
+     * 前置条件：该键已有成功结果，但确认语仍是每个 reset 请求的不可绕过安全边界。
+     * 期望结果：错误短语始终返回 DEMO_RESET_CONFIRMATION_INVALID，不得泄漏或复用此前成功结果。
+     * 断言重点：确认语验证必须早于所有幂等缓存读取，且不能因此第二次清空。
+     */
+    @Test
+    void rejectsInvalidConfirmationBeforeReturningCachedSuccess() {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        when(repository.counts()).thenReturn(zeroCounts());
+        DemoStateService service = service(repository, new RecordingTransactionManager());
+        service.reset("confirmation-first", "清空全部比赛数据");
+
+        assertThatThrownBy(() -> service.reset("confirmation-first", "错误确认语"))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("DEMO_RESET_CONFIRMATION_INVALID");
+
+        verify(repository, org.mockito.Mockito.times(1)).clearAll();
+    }
+
+    /**
+     * 测试场景：调用方连续提交 64 个不同幂等键但都携带错误确认短语。
+     * 前置条件：错误请求不应创建 Future、占用固定容量或触碰目录和数据库。
+     * 期望结果：随后以其中一个相同键提交合法确认语时，仍可正常执行首次清空。
+     * 断言重点：确认语失败必须发生在缓存写入前，防止无效请求耗尽单进程安全上限。
+     */
+    @Test
+    void doesNotConsumeIdempotencyCapacityForInvalidConfirmations() {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        when(repository.counts()).thenReturn(zeroCounts());
+        DemoStateService service = service(repository, new RecordingTransactionManager());
+
+        for (int index = 0; index < 64; index++) {
+            String key = "invalid-confirmation-" + index;
+            assertThatThrownBy(() -> service.reset(key, "错误确认语"))
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessageContaining("DEMO_RESET_CONFIRMATION_INVALID");
+        }
+        service.reset("invalid-confirmation-0", "清空全部比赛数据");
+
+        verify(repository).clearAll();
+    }
+
+    /**
+     * 测试场景：64 个不同且合法的 reset 请求已经占用当前进程的固定安全容量。
+     * 前置条件：使用受管目录交换器替身避免为容量断言重复进行真实文件系统交换。
+     * 期望结果：第 65 个合法键返回 DEMO_RESET_IDEMPOTENCY_LIMIT_REACHED，旧键不被淘汰且不新增 clearAll。
+     * 断言重点：容量保护以拒绝新键而非 LRU 淘汰实现，避免被淘汰键在导入新数据后重新触发破坏操作。
+     */
+    @Test
+    void rejectsSixtyFifthLegalKeyWithoutEvictingCompletedKeys() {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        when(repository.counts()).thenReturn(zeroCounts());
+        ManagedStorageSwap storageSwap = mock(ManagedStorageSwap.class);
+        when(storageSwap.prepare(org.mockito.ArgumentMatchers.any())).thenReturn(mock(ManagedStorageSwap.PreparedStorageSwap.class));
+        when(storageSwap.blankState()).thenReturn(Map.of(
+                "uploads", true, "skill-snapshots", true, "skill-runtime", true));
+        DemoStateService service = service(repository, storageSwap, new RecordingTransactionManager());
+
+        for (int index = 0; index < 64; index++) {
+            service.reset("capacity-key-" + index, "清空全部比赛数据");
+        }
+
+        assertThatThrownBy(() -> service.reset("capacity-key-64", "清空全部比赛数据"))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("DEMO_RESET_IDEMPOTENCY_LIMIT_REACHED");
+
+        verify(repository, org.mockito.Mockito.times(64)).clearAll();
+    }
+
+    /**
      * 测试场景：两个管理请求并发提交相同幂等键。
      * 前置条件：首次数据库清理在事务回调内暂停，第二个线程在首次完成前进入服务。
      * 期望结果：只有第一个线程进入 clearAll，两个调用最终获得同一个成功投影。
@@ -239,6 +309,14 @@ class DemoStateServiceTest {
     /** 建立服务实例；目录交换使用真实实现，事务管理器记录独立提交行为而不连接数据库。 */
     private DemoStateService service(DemoStateRepository repository, RecordingTransactionManager transactionManager) {
         return new DemoStateService(repository, new ManagedStorageSwap(storageRoot), transactionManager);
+    }
+
+    /** 为容量测试注入无文件系统副作用的交换器替身，使断言只覆盖幂等缓存边界。 */
+    private static DemoStateService service(
+            DemoStateRepository repository,
+            ManagedStorageSwap storageSwap,
+            RecordingTransactionManager transactionManager) {
+        return new DemoStateService(repository, storageSwap, transactionManager);
     }
 
     /** 写入一个运行期文件并同时创建目录必须保留的 .gitkeep，以模拟版本库初始化后的真实布局。 */
