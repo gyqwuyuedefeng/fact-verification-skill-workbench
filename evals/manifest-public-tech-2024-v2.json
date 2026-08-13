@@ -1,0 +1,13 @@
+{
+  "version": "public-tech-2024-v2",
+  "datasetFile": "dataset-public-tech-2024-v2.jsonl",
+  "sampleCount": 30,
+  "sampleIds": [
+    "iflytek-basic", "iflytek-finance", "iflytek-ip", "iflytek-risk", "iflytek-relation", "iflytek-conflict",
+    "kingsoft-basic", "kingsoft-finance", "kingsoft-ip", "kingsoft-risk", "kingsoft-relation", "kingsoft-ambiguous",
+    "sangfor-basic", "sangfor-finance", "sangfor-ip", "sangfor-risk", "sangfor-relation", "sangfor-missing",
+    "inspur-basic", "inspur-finance", "inspur-ip", "inspur-risk", "inspur-relation", "inspur-unit-conflict",
+    "yonyou-basic", "yonyou-finance", "yonyou-ip", "yonyou-risk", "yonyou-relation", "yonyou-period-conflict"
+  ],
+  "license": "仅使用上市公司依法公开披露的 2024 年年度报告作内部比赛评测；保存事实摘要和定位，不再分发报告全文。"
+}

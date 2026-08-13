@@ -1,0 +1,3258 @@
+[
+  {
+    "gold": {
+      "category": "BASIC",
+      "material": {
+        "text": "截至本次证据检索，科大讯飞股份有限公司统一社会信用代码为 91340000711771143J。",
+        "locator": {
+          "type": "LINE",
+          "value": "L1"
+        }
+      },
+      "sampleId": "iflytek-basic",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_info",
+          "recordId": "c92a93465b4933577e552cb8e593c890",
+          "toolName": "get_company_profile",
+          "sourceUrl": "urn:hsmap:ads_lget_company_info:c92a93465b4933577e552cb8e593c890",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "uni_code=91340000711771143J"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "ef865a606f84bf2dd88486482840eab6",
+        "companyName": "科大讯飞股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": "91340000711771143J",
+        "metric": "unifiedSocialCreditCode",
+        "period": "CURRENT",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "科大讯飞股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_profile",
+          "arguments": {
+            "companyId": "ef865a606f84bf2dd88486482840eab6"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "value": "exact",
+        "subject": "exact"
+      }
+    },
+    "sampleId": "iflytek-basic",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 20575
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 17639
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 18436
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120136
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120136
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 61859
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "科大讯飞股份有限公司 2024 年营业收入为 2334309.301869 万元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L2"
+        }
+      },
+      "sampleId": "iflytek-finance",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_revenue",
+          "recordId": "59cff97376a482e18aaba950d22c2a60",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:ads_lget_company_revenue:59cff97376a482e18aaba950d22c2a60",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "report_year=2024,total_sales=2334309.301869万元"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "ef865a606f84bf2dd88486482840eab6",
+        "companyName": "科大讯飞股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "万元",
+        "value": "2334309.301869",
+        "metric": "revenue",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "科大讯飞股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "ef865a606f84bf2dd88486482840eab6"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2024",
+        "tolerance": "0.01",
+        "unitConversions": [
+          "元",
+          "万元",
+          "亿元"
+        ]
+      }
+    },
+    "sampleId": "iflytek-finance",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 25931
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 25081
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 33605
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120043
+          },
+          {
+            "output": {
+              "runId": "4ec627ac-8f78-42c0-a0bf-a5eb75d2903b",
+              "claims": [
+                {
+                  "status": "VERIFIED",
+                  "claimId": "claim_1",
+                  "subject": {
+                    "companyId": "ef865a606f84bf2dd88486482840eab6",
+                    "companyName": "科大讯飞股份有限公司",
+                    "unifiedSocialCreditCode": "91340000711771143J"
+                  },
+                  "evidence": [
+                    {
+                      "source": "HS_ENTERPRISE_ES",
+                      "content": {
+                        "dataset": "ads_lget_company_revenue",
+                        "recordId": "59cff97376a482e18aaba950d22c2a60",
+                        "report_year": 2024,
+                        "total_sales": 2334309.301869,
+                        "company_code": "ef865a606f84bf2dd88486482840eab6",
+                        "retained_profit": 50703.363221,
+                        "total_sales_yoy": 18.7923763,
+                        "total_sales_level": ">100000",
+                        "retained_profit_yoy": -17.3062774,
+                        "liability_assets_yoy": 54.88098084,
+                        "retained_profit_level": "50000-100000",
+                        "retained_operating_income_yoy": 2.17209275
+                      },
+                      "dataset": "ads_lget_company_revenue",
+                      "recordId": "59cff97376a482e18aaba950d22c2a60",
+                      "observedAt": "2026-08-12T19:13:39.78230936Z"
+                    }
+                  ],
+                  "claimText": "科大讯飞股份有限公司 2024 年营业收入为 2334309.301869 万元。",
+                  "riskFlags": [],
+                  "explanation": "材料主张科大讯飞股份有限公司 2024 年营业收入为 2334309.301869 万元，与企业财务证据中 2024 年 total_sales 2334309.301869 完全一致，故核验通过。",
+                  "materialLocator": {
+                    "fileId": "L2",
+                    "lineEnd": 1,
+                    "lineStart": 1
+                  },
+                  "normalizedClaim": {
+                    "unit": "万元",
+                    "value": 2334309.301869,
+                    "metric": "revenue",
+                    "period": "2024",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": false
+                }
+              ],
+              "variant": {
+                "type": "SKILL",
+                "identifier": "24e515d5-6d0d-4f9a-b981-b44d8d154a77",
+                "contentHash": "29b2fbaaf69ddb754212b08e94452ad21574fa93e5f066600688ee1fefce2b1e"
+              },
+              "evidenceSnapshotId": "362c9b2d-a631-4465-880b-7754e3a85946",
+              "documentSnapshotHash": "0181d4aa004270a4daa346562b8b85d6b4da172d4469b968718991df840df585"
+            },
+            "attempt": 2,
+            "errorCode": null,
+            "durationMs": 56221
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120047
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "INTELLECTUAL_PROPERTY",
+      "material": {
+        "text": "截至本次证据检索，科大讯飞股份有限公司存在至少一条知识产权记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L3"
+        }
+      },
+      "sampleId": "iflytek-ip",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_patent_info",
+          "recordId": "ab65fb6ee2651ca9618f6636a5d84d52",
+          "toolName": "get_company_intellectual_property",
+          "sourceUrl": "urn:hsmap:ads_lget_patent_info:ab65fb6ee2651ca9618f6636a5d84d52",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条知识产权记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "ef865a606f84bf2dd88486482840eab6",
+        "companyName": "科大讯飞股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "intellectualProperty",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "科大讯飞股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_intellectual_property",
+          "arguments": {
+            "companyId": "ef865a606f84bf2dd88486482840eab6"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "atLeastOneRecord": true
+      }
+    },
+    "sampleId": "iflytek-ip",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 41642
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 95784
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 23677
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 50342
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 45418
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120060
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RISK",
+      "material": {
+        "text": "科大讯飞股份有限公司 2024 年不存在任何失信、违法、行政处罚或欠税记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L4"
+        }
+      },
+      "sampleId": "iflytek-risk",
+      "edgeCases": [
+        "negative-claim"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "iflytek-risk-2024-scope",
+          "toolName": "get_company_risks",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:iflytek-risk-2024-scope",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "工具没有完整覆盖证明，不能证实2024年不存在风险"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "ef865a606f84bf2dd88486482840eab6",
+        "companyName": "科大讯飞股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "riskRecordAbsence",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "科大讯飞股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_risks",
+          "arguments": {
+            "companyId": "ef865a606f84bf2dd88486482840eab6"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "negativeClaim": true
+      }
+    },
+    "sampleId": "iflytek-risk",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 28196
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 38089
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 31918
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120064
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120054
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120043
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RELATIONSHIP",
+      "material": {
+        "text": "截至本次证据检索，科大讯飞股份有限公司存在至少一条股东、客户或供应商关系记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L5"
+        }
+      },
+      "sampleId": "iflytek-relation",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_sholder",
+          "recordId": "9eebe5eb882f2976326517c639ea0f78",
+          "toolName": "get_company_relationships",
+          "sourceUrl": "urn:hsmap:ads_lget_company_sholder:9eebe5eb882f2976326517c639ea0f78",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条企业关系记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "ef865a606f84bf2dd88486482840eab6",
+        "companyName": "科大讯飞股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "enterpriseRelationship",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "科大讯飞股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_relationships",
+          "arguments": {
+            "companyId": "ef865a606f84bf2dd88486482840eab6"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "nullMeansNoController": true
+      }
+    },
+    "sampleId": "iflytek-relation",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 41160
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 63012
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120021
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 21578
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 30029
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120048
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "科大讯飞 2024 年营业收入为 196.50 亿元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L6"
+        }
+      },
+      "sampleId": "iflytek-conflict",
+      "edgeCases": [
+        "unit-mismatch"
+      ],
+      "expectedStatus": "CONFLICT",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_revenue",
+          "recordId": "59cff97376a482e18aaba950d22c2a60",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:ads_lget_company_revenue:59cff97376a482e18aaba950d22c2a60",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "实际 total_sales=2334309.301869万元"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "ef865a606f84bf2dd88486482840eab6",
+        "companyName": "科大讯飞股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "亿元",
+        "value": "196.50",
+        "metric": "revenue",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "科大讯飞股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "ef865a606f84bf2dd88486482840eab6"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2024",
+        "unitConversions": [
+          "万元",
+          "亿元"
+        ]
+      }
+    },
+    "sampleId": "iflytek-conflict",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-conflict",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 34346
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 27727
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 26554
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "iflytek-conflict",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 40306
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 29184
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120584
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "BASIC",
+      "material": {
+        "text": "截至本次证据检索，北京金山办公软件股份有限公司统一社会信用代码为 91110108587665983J。",
+        "locator": {
+          "type": "LINE",
+          "value": "L1"
+        }
+      },
+      "sampleId": "kingsoft-basic",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_info",
+          "recordId": "7d56496da7379c1c2d796d0f4578c91a",
+          "toolName": "get_company_profile",
+          "sourceUrl": "urn:hsmap:ads_lget_company_info:7d56496da7379c1c2d796d0f4578c91a",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "uni_code=91110108587665983J"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "5533db99386bc889fc52566b68ad2172",
+        "companyName": "北京金山办公软件股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": "91110108587665983J",
+        "metric": "unifiedSocialCreditCode",
+        "period": "CURRENT",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "北京金山办公软件股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_profile",
+          "arguments": {
+            "companyId": "5533db99386bc889fc52566b68ad2172"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "value": "exact",
+        "subject": "exact"
+      }
+    },
+    "sampleId": "kingsoft-basic",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 22281
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 15426
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 27868
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 30569
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120048
+          },
+          {
+            "output": {
+              "runId": "8fa39d69-1a00-4f76-bc2f-6fb0a5fb955e",
+              "claims": [
+                {
+                  "status": "VERIFIED",
+                  "claimId": "claim_1",
+                  "subject": {
+                    "companyId": "5533db99386bc889fc52566b68ad2172",
+                    "companyName": "北京金山办公软件股份有限公司",
+                    "unifiedSocialCreditCode": null
+                  },
+                  "evidence": [
+                    {
+                      "source": "HS_ENTERPRISE_ES",
+                      "content": {
+                        "dataset": "ads_lget_company_info",
+                        "recordId": "7d56496da7379c1c2d796d0f4578c91a",
+                        "uni_code": "91110108587665983J",
+                        "legal_rep": "邹涛",
+                        "found_date": "2011-12-20",
+                        "name_before": "北京金山办公软件有限公司",
+                        "reg_address": "北京市海淀区小营西路33号2层02层",
+                        "company_code": "5533db99386bc889fc52566b68ad2172",
+                        "company_name": "北京金山办公软件股份有限公司",
+                        "industry_nea": "其他软件开发",
+                        "company_sname": "金山办公",
+                        "business_scope": "一般项目:货物进出口；技术进出口；计算机软硬件及辅助设备批发；通信设备销售；软件开发；广告发布；广告设计、代理；广告制作；信息系统集成服务；技术服务、技术开发、技术咨询、技术交流、技术转让、技术推广；软件销售。(除依法须经批准的项目外，凭营业执照依法自主开展经营活动)许可项目:互联网信息服务；第二类增值电信业务。(依法须经批准的项目，经相关部门批准后方可开展经营活动，具体经营项目以相关部门批准文件或许可证件为准)(不得从事国家和本市产业政策禁止和限制类项目的经营活动。)",
+                        "business_state": "存续(在营、开业、在册)",
+                        "regcapital_amt_cal": 463372121
+                      },
+                      "dataset": "ads_lget_company_info",
+                      "recordId": "7d56496da7379c1c2d796d0f4578c91a",
+                      "observedAt": "2026-08-12T19:13:42.263862826Z"
+                    }
+                  ],
+                  "claimText": "截至本次证据检索，北京金山办公软件股份有限公司统一社会信用代码为 91110108587665983J。",
+                  "riskFlags": [],
+                  "explanation": "材料主张的统一社会信用代码 91110108587665983J 与企业证据工具 get_company_profile 返回的 uni_code 字段完全一致，核验通过。",
+                  "materialLocator": {
+                    "fileId": "L1",
+                    "lineEnd": 1,
+                    "lineStart": 1
+                  },
+                  "normalizedClaim": {
+                    "unit": null,
+                    "value": "91110108587665983J",
+                    "metric": "unifiedSocialCreditCode",
+                    "period": "CURRENT",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": false
+                }
+              ],
+              "variant": {
+                "type": "SKILL",
+                "identifier": "24e515d5-6d0d-4f9a-b981-b44d8d154a77",
+                "contentHash": "29b2fbaaf69ddb754212b08e94452ad21574fa93e5f066600688ee1fefce2b1e"
+              },
+              "evidenceSnapshotId": "362c9b2d-a631-4465-880b-7754e3a85946",
+              "documentSnapshotHash": "0aed8e0fe6f859374518cec330726f07f561915c954c017f8bf40ec285fd7d65"
+            },
+            "attempt": 3,
+            "errorCode": null,
+            "durationMs": 26504
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "北京金山办公软件股份有限公司 2024 年营业收入为 512083.879882 万元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L2"
+        }
+      },
+      "sampleId": "kingsoft-finance",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_revenue",
+          "recordId": "01a4f1f885d6fedad3431af2c4cc342f",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:ads_lget_company_revenue:01a4f1f885d6fedad3431af2c4cc342f",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "report_year=2024,total_sales=512083.879882万元"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "5533db99386bc889fc52566b68ad2172",
+        "companyName": "北京金山办公软件股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "万元",
+        "value": "512083.879882",
+        "metric": "revenue",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "北京金山办公软件股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "5533db99386bc889fc52566b68ad2172"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2024",
+        "tolerance": "0.01",
+        "unitConversions": [
+          "元",
+          "万元",
+          "亿元"
+        ]
+      }
+    },
+    "sampleId": "kingsoft-finance",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 20475
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 20125
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 45815
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": true,
+          "sampleId": "kingsoft-finance",
+          "completed": true,
+          "requiresHumanIntervention": false
+        },
+        "attempts": [
+          {
+            "output": {
+              "runId": "373b2a36-7e6a-452c-8096-00be1f952f41",
+              "claims": [
+                {
+                  "status": "VERIFIED",
+                  "claimId": "claim_1",
+                  "subject": {
+                    "companyId": "5533db99386bc889fc52566b68ad2172",
+                    "companyName": "北京金山办公软件股份有限公司",
+                    "unifiedSocialCreditCode": "91110108587665983J"
+                  },
+                  "evidence": [
+                    {
+                      "source": "HS_ENTERPRISE_ES",
+                      "content": {
+                        "dataset": "ads_lget_company_revenue",
+                        "recordId": "01a4f1f885d6fedad3431af2c4cc342f",
+                        "report_year": 2024,
+                        "total_sales": 512083.879882,
+                        "company_code": "5533db99386bc889fc52566b68ad2172",
+                        "retained_profit": 165528.406488,
+                        "total_sales_yoy": 12.3984733,
+                        "total_sales_level": ">100000",
+                        "retained_profit_yoy": 25.9286673,
+                        "liability_assets_yoy": 28.13014782,
+                        "retained_profit_level": "100000-500000",
+                        "retained_operating_income_yoy": 32.32447124
+                      },
+                      "dataset": "ads_lget_company_revenue",
+                      "recordId": "01a4f1f885d6fedad3431af2c4cc342f",
+                      "observedAt": "2026-08-12T19:13:42.387036032Z"
+                    }
+                  ],
+                  "claimText": "北京金山办公软件股份有限公司 2024 年营业收入为 512083.879882 万元。",
+                  "riskFlags": [],
+                  "explanation": "材料主张北京金山办公软件股份有限公司 2024 年营业收入为 512083.879882 万元，与企业财务证据工具返回的 2024 年 total_sales 数值 512083.879882 完全一致，主体、指标、期间、数值均匹配，故判定为 VERIFIED。",
+                  "materialLocator": {
+                    "fileId": "L2",
+                    "lineEnd": 1,
+                    "lineStart": 1
+                  },
+                  "normalizedClaim": {
+                    "unit": "万元",
+                    "value": 512083.879882,
+                    "metric": "revenue",
+                    "period": "2024",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": false
+                }
+              ],
+              "variant": {
+                "type": "SKILL",
+                "identifier": "24e515d5-6d0d-4f9a-b981-b44d8d154a77",
+                "contentHash": "29b2fbaaf69ddb754212b08e94452ad21574fa93e5f066600688ee1fefce2b1e"
+              },
+              "evidenceSnapshotId": "362c9b2d-a631-4465-880b-7754e3a85946",
+              "documentSnapshotHash": "0b74f9e07d7b6dfab4999efb1db366b93f725b716e6a33a034c58866d783c995"
+            },
+            "attempt": 1,
+            "errorCode": null,
+            "durationMs": 23899
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120051
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 27989
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "INTELLECTUAL_PROPERTY",
+      "material": {
+        "text": "截至本次证据检索，北京金山办公软件股份有限公司存在至少一条知识产权记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L3"
+        }
+      },
+      "sampleId": "kingsoft-ip",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_patent_info",
+          "recordId": "3a7e2962104f46de677df79b8fa9cb61",
+          "toolName": "get_company_intellectual_property",
+          "sourceUrl": "urn:hsmap:ads_lget_patent_info:3a7e2962104f46de677df79b8fa9cb61",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条知识产权记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "5533db99386bc889fc52566b68ad2172",
+        "companyName": "北京金山办公软件股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "intellectualProperty",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "北京金山办公软件股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_intellectual_property",
+          "arguments": {
+            "companyId": "5533db99386bc889fc52566b68ad2172"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "atLeastOneRecord": true
+      }
+    },
+    "sampleId": "kingsoft-ip",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120019
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120054
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 70298
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 43074
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 43495
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120062
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RISK",
+      "material": {
+        "text": "北京金山办公软件股份有限公司 2024 年不存在任何失信、违法、行政处罚或欠税记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L4"
+        }
+      },
+      "sampleId": "kingsoft-risk",
+      "edgeCases": [
+        "negative-claim"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "kingsoft-risk-2024-scope",
+          "toolName": "get_company_risks",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:kingsoft-risk-2024-scope",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "工具没有完整覆盖证明，不能证实2024年不存在风险"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "5533db99386bc889fc52566b68ad2172",
+        "companyName": "北京金山办公软件股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "riskRecordAbsence",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "北京金山办公软件股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_risks",
+          "arguments": {
+            "companyId": "5533db99386bc889fc52566b68ad2172"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "negativeClaim": true
+      }
+    },
+    "sampleId": "kingsoft-risk",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 32716
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 34674
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120056
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120039
+          },
+          {
+            "output": null,
+            "attempt": 2,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 27447
+          },
+          {
+            "output": null,
+            "attempt": 3,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 35188
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RELATIONSHIP",
+      "material": {
+        "text": "截至本次证据检索，北京金山办公软件股份有限公司存在至少一条股东、客户或供应商关系记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L5"
+        }
+      },
+      "sampleId": "kingsoft-relation",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_sholder",
+          "recordId": "400290a21cad8085f97c2fb6c74346f7",
+          "toolName": "get_company_relationships",
+          "sourceUrl": "urn:hsmap:ads_lget_company_sholder:400290a21cad8085f97c2fb6c74346f7",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条企业关系记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "5533db99386bc889fc52566b68ad2172",
+        "companyName": "北京金山办公软件股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "enterpriseRelationship",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "北京金山办公软件股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_relationships",
+          "arguments": {
+            "companyId": "5533db99386bc889fc52566b68ad2172"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "relationship": "ultimate-parent"
+      }
+    },
+    "sampleId": "kingsoft-relation",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 32869
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120047
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "BASIC",
+      "material": {
+        "text": "“金山”2024 年营业收入超过 50 亿元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L6"
+        }
+      },
+      "sampleId": "kingsoft-ambiguous",
+      "edgeCases": [
+        "subject-ambiguity"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "kingsoft-short-name-ambiguous",
+          "toolName": "resolve_company",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:kingsoft-short-name-ambiguous",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "简称“金山”不能唯一定位到规范主体"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "",
+        "companyName": ""
+      },
+      "normalizedClaim": {
+        "unit": "亿元",
+        "value": "50",
+        "metric": "revenue",
+        "period": "2024",
+        "operator": "GREATER_THAN"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "金山"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "subject": "must-be-unique"
+      }
+    },
+    "sampleId": "kingsoft-ambiguous",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-ambiguous",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 22789
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "kingsoft-ambiguous",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 14738
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "BASIC",
+      "material": {
+        "text": "截至本次证据检索，深信服科技股份有限公司统一社会信用代码为 91440300726171773F。",
+        "locator": {
+          "type": "LINE",
+          "value": "L1"
+        }
+      },
+      "sampleId": "sangfor-basic",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_info",
+          "recordId": "0b62c9bae342190408c91ca6462e572b",
+          "toolName": "get_company_profile",
+          "sourceUrl": "urn:hsmap:ads_lget_company_info:0b62c9bae342190408c91ca6462e572b",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "uni_code=91440300726171773F"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "bd62524db001604e9a816abd1938434d",
+        "companyName": "深信服科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": "91440300726171773F",
+        "metric": "unifiedSocialCreditCode",
+        "period": "CURRENT",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "深信服科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_profile",
+          "arguments": {
+            "companyId": "bd62524db001604e9a816abd1938434d"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "setEquality": true
+      }
+    },
+    "sampleId": "sangfor-basic",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 30989
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 24756
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "深信服科技股份有限公司 2024 年营业收入为 751975.636623 万元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L2"
+        }
+      },
+      "sampleId": "sangfor-finance",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_revenue",
+          "recordId": "3df90e16294597f23cb08743d1e08a08",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:ads_lget_company_revenue:3df90e16294597f23cb08743d1e08a08",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "report_year=2024,total_sales=751975.636623万元"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "bd62524db001604e9a816abd1938434d",
+        "companyName": "深信服科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "万元",
+        "value": "751975.636623",
+        "metric": "revenue",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "深信服科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "bd62524db001604e9a816abd1938434d"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2024",
+        "tolerance": "0.01",
+        "unitConversions": [
+          "元",
+          "万元",
+          "亿元"
+        ]
+      }
+    },
+    "sampleId": "sangfor-finance",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 79468
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120059
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "INTELLECTUAL_PROPERTY",
+      "material": {
+        "text": "截至本次证据检索，深信服科技股份有限公司存在至少一条知识产权记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L3"
+        }
+      },
+      "sampleId": "sangfor-ip",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_patent_info",
+          "recordId": "a98a57eb996ba7c55e4553a284f7b13b",
+          "toolName": "get_company_intellectual_property",
+          "sourceUrl": "urn:hsmap:ads_lget_patent_info:a98a57eb996ba7c55e4553a284f7b13b",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条知识产权记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "bd62524db001604e9a816abd1938434d",
+        "companyName": "深信服科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "intellectualProperty",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "深信服科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_intellectual_property",
+          "arguments": {
+            "companyId": "bd62524db001604e9a816abd1938434d"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "atLeastOneRecord": true
+      }
+    },
+    "sampleId": "sangfor-ip",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 35209
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 42712
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RISK",
+      "material": {
+        "text": "截至本次证据检索，深信服科技股份有限公司存在至少一条行政处罚记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L4"
+        }
+      },
+      "sampleId": "sangfor-risk",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_adm_punish",
+          "recordId": "302753a4d6b449a17a0f4b26b578f917",
+          "toolName": "get_company_risks",
+          "sourceUrl": "urn:hsmap:ads_lget_company_adm_punish:302753a4d6b449a17a0f4b26b578f917",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条行政处罚记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "bd62524db001604e9a816abd1938434d",
+        "companyName": "深信服科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "administrativePenalty",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "深信服科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_risks",
+          "arguments": {
+            "companyId": "bd62524db001604e9a816abd1938434d"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "atLeastOneRecord": true
+      }
+    },
+    "sampleId": "sangfor-risk",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 39683
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120040
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RELATIONSHIP",
+      "material": {
+        "text": "截至本次证据检索，深信服科技股份有限公司存在至少一条股东、客户或供应商关系记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L5"
+        }
+      },
+      "sampleId": "sangfor-relation",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_sholder",
+          "recordId": "7b336cdeea849be6b70bf84dc1ded7f3",
+          "toolName": "get_company_relationships",
+          "sourceUrl": "urn:hsmap:ads_lget_company_sholder:7b336cdeea849be6b70bf84dc1ded7f3",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条企业关系记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "bd62524db001604e9a816abd1938434d",
+        "companyName": "深信服科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "enterpriseRelationship",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "深信服科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_relationships",
+          "arguments": {
+            "companyId": "bd62524db001604e9a816abd1938434d"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "rolesContain": [
+          "董事长",
+          "总经理"
+        ]
+      }
+    },
+    "sampleId": "sangfor-relation",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 33667
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120048
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "深信服科技股份有限公司 2030 年营业收入为 100 亿元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L6"
+        }
+      },
+      "sampleId": "sangfor-missing",
+      "edgeCases": [
+        "data-missing"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "sangfor-financial-2030-out-of-range",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:sangfor-financial-2030-out-of-range",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "固定返回的最新五个报告期为2021-2025，不含2030"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "bd62524db001604e9a816abd1938434d",
+        "companyName": "深信服科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "亿元",
+        "value": "100",
+        "metric": "revenue",
+        "period": "2030",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "深信服科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "bd62524db001604e9a816abd1938434d"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2030"
+      }
+    },
+    "sampleId": "sangfor-missing",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-missing",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 95537
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "sangfor-missing",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120043
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "BASIC",
+      "material": {
+        "text": "截至本次证据检索，浪潮电子信息产业股份有限公司统一社会信用代码为 91370000706266601D。",
+        "locator": {
+          "type": "LINE",
+          "value": "L1"
+        }
+      },
+      "sampleId": "inspur-basic",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_info",
+          "recordId": "05e321fdd4e87be116c0919054176d78",
+          "toolName": "get_company_profile",
+          "sourceUrl": "urn:hsmap:ads_lget_company_info:05e321fdd4e87be116c0919054176d78",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "uni_code=91370000706266601D"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "05e321fdd4e87be116c0919054176d78",
+        "companyName": "浪潮电子信息产业股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": "91370000706266601D",
+        "metric": "unifiedSocialCreditCode",
+        "period": "CURRENT",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "浪潮电子信息产业股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_profile",
+          "arguments": {
+            "companyId": "05e321fdd4e87be116c0919054176d78"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "value": "exact",
+        "subject": "exact"
+      }
+    },
+    "sampleId": "inspur-basic",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 22377
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 50582
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "浪潮信息 2024 年营业收入为 11476736.68 万元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L2"
+        }
+      },
+      "sampleId": "inspur-finance",
+      "edgeCases": [
+        "data-missing"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "inspur-financial-empty-20260813",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:inspur-financial-empty-20260813",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "当前 dev ES 财务工具 total=0"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "05e321fdd4e87be116c0919054176d78",
+        "companyName": "浪潮电子信息产业股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "万元",
+        "value": "11476736.68",
+        "metric": "revenue",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "浪潮电子信息产业股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "05e321fdd4e87be116c0919054176d78"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2024"
+      }
+    },
+    "sampleId": "inspur-finance",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 25102
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 15529
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "INTELLECTUAL_PROPERTY",
+      "material": {
+        "text": "截至本次证据检索，浪潮电子信息产业股份有限公司存在至少一条知识产权记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L3"
+        }
+      },
+      "sampleId": "inspur-ip",
+      "edgeCases": [
+        "data-missing"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "inspur-ip-empty-20260813",
+          "toolName": "get_company_intellectual_property",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:inspur-ip-empty-20260813",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "当前 dev ES 知识产权工具 total=0"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "05e321fdd4e87be116c0919054176d78",
+        "companyName": "浪潮电子信息产业股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "intellectualProperty",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "浪潮电子信息产业股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_intellectual_property",
+          "arguments": {
+            "companyId": "05e321fdd4e87be116c0919054176d78"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "atLeastOneRecord": true
+      }
+    },
+    "sampleId": "inspur-ip",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 28868
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120098
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RISK",
+      "material": {
+        "text": "浪潮信息 2024 年不存在任何处罚或欠税。",
+        "locator": {
+          "type": "LINE",
+          "value": "L4"
+        }
+      },
+      "sampleId": "inspur-risk",
+      "edgeCases": [
+        "negative-claim"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "inspur-risk-empty-20260813",
+          "toolName": "get_company_risks",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:inspur-risk-empty-20260813",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "当前 dev ES 风险工具 total=0；空结果不能证明不存在"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "05e321fdd4e87be116c0919054176d78",
+        "companyName": "浪潮电子信息产业股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "riskRecordAbsence",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "浪潮电子信息产业股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_risks",
+          "arguments": {
+            "companyId": "05e321fdd4e87be116c0919054176d78"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "negativeClaim": true
+      }
+    },
+    "sampleId": "inspur-risk",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 15981
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120042
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RELATIONSHIP",
+      "material": {
+        "text": "截至本次证据检索，浪潮电子信息产业股份有限公司存在至少一条股东、客户或供应商关系记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L5"
+        }
+      },
+      "sampleId": "inspur-relation",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_client",
+          "recordId": "05e321fdd4e87be116c0919054176d78",
+          "toolName": "get_company_relationships",
+          "sourceUrl": "urn:hsmap:ads_lget_company_client:05e321fdd4e87be116c0919054176d78",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条企业关系记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "05e321fdd4e87be116c0919054176d78",
+        "companyName": "浪潮电子信息产业股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "enterpriseRelationship",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "浪潮电子信息产业股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_relationships",
+          "arguments": {
+            "companyId": "05e321fdd4e87be116c0919054176d78"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "atLeastOneRecord": true
+      }
+    },
+    "sampleId": "inspur-relation",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 28899
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 16685
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "截至本次证据检索，浪潮电子信息产业股份有限公司法定代表人为张三。",
+        "locator": {
+          "type": "LINE",
+          "value": "L6"
+        }
+      },
+      "sampleId": "inspur-unit-conflict",
+      "edgeCases": [
+        "value-mismatch"
+      ],
+      "expectedStatus": "CONFLICT",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_info",
+          "recordId": "05e321fdd4e87be116c0919054176d78",
+          "toolName": "get_company_profile",
+          "sourceUrl": "urn:hsmap:ads_lget_company_info:05e321fdd4e87be116c0919054176d78",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "实际 legal_rep=彭震"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "05e321fdd4e87be116c0919054176d78",
+        "companyName": "浪潮电子信息产业股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": "张三",
+        "metric": "legalRepresentative",
+        "period": "CURRENT",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "浪潮电子信息产业股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_profile",
+          "arguments": {
+            "companyId": "05e321fdd4e87be116c0919054176d78"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "value": "exact"
+      }
+    },
+    "sampleId": "inspur-unit-conflict",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-unit-conflict",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 22240
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-unit-conflict",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 18066
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "BASIC",
+      "material": {
+        "text": "截至本次证据检索，用友网络科技股份有限公司注册地址为北京市海淀区北清路 68 号。",
+        "locator": {
+          "type": "LINE",
+          "value": "L1"
+        }
+      },
+      "sampleId": "yonyou-basic",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_info",
+          "recordId": "a1e4fe2ab94fb7b1b523c155c5b9ae5d",
+          "toolName": "get_company_profile",
+          "sourceUrl": "urn:hsmap:ads_lget_company_info:a1e4fe2ab94fb7b1b523c155c5b9ae5d",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "reg_address=北京市海淀区北清路68号"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "d08a6dee3c5fd0859f97d393affa5c4a",
+        "companyName": "用友网络科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": "北京市海淀区北清路68号",
+        "metric": "registeredAddress",
+        "period": "CURRENT",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "用友网络科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_profile",
+          "arguments": {
+            "companyId": "d08a6dee3c5fd0859f97d393affa5c4a"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "ignoreWhitespace": true
+      }
+    },
+    "sampleId": "yonyou-basic",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 20893
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-basic",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120070
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "用友网络科技股份有限公司 2024 年营业收入为 915272.9443 万元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L2"
+        }
+      },
+      "sampleId": "yonyou-finance",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_revenue",
+          "recordId": "1d8f2995d07d51a744dc355ad8989f15",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:ads_lget_company_revenue:1d8f2995d07d51a744dc355ad8989f15",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "report_year=2024,total_sales=915272.9443万元"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "d08a6dee3c5fd0859f97d393affa5c4a",
+        "companyName": "用友网络科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "万元",
+        "value": "915272.9443",
+        "metric": "revenue",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "用友网络科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "d08a6dee3c5fd0859f97d393affa5c4a"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2024",
+        "tolerance": "1",
+        "unitConversions": [
+          "元",
+          "万元",
+          "亿元"
+        ]
+      }
+    },
+    "sampleId": "yonyou-finance",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 27226
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-finance",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 31801
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "INTELLECTUAL_PROPERTY",
+      "material": {
+        "text": "截至本次证据检索，用友网络科技股份有限公司存在至少一条知识产权记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L3"
+        }
+      },
+      "sampleId": "yonyou-ip",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_patent_info",
+          "recordId": "4334c61f9959422fbf961134ffd4043b",
+          "toolName": "get_company_intellectual_property",
+          "sourceUrl": "urn:hsmap:ads_lget_patent_info:4334c61f9959422fbf961134ffd4043b",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条知识产权记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "d08a6dee3c5fd0859f97d393affa5c4a",
+        "companyName": "用友网络科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "intellectualProperty",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "用友网络科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_intellectual_property",
+          "arguments": {
+            "companyId": "d08a6dee3c5fd0859f97d393affa5c4a"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "atLeastOneRecord": true
+      }
+    },
+    "sampleId": "yonyou-ip",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-ip",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 43047
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-ip",
+          "completed": true,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": {
+              "runId": "696105aa-11da-409d-8353-d278230ae85f",
+              "claims": [
+                {
+                  "status": "VERIFIED",
+                  "claimId": "claim_1",
+                  "subject": {
+                    "companyId": "d08a6dee3c5fd0859f97d393affa5c4a",
+                    "companyName": "用友网络科技股份有限公司",
+                    "unifiedSocialCreditCode": null
+                  },
+                  "evidence": [
+                    {
+                      "source": "HS_ENTERPRISE_ES",
+                      "content": {
+                        "title": "一种基于多任务学习的文档图像校正方法和装置",
+                        "dataset": "ads_lget_patent_info",
+                        "recordId": "4334c61f9959422fbf961134ffd4043b",
+                        "legal_state": "公开",
+                        "patent_type": "发明专利",
+                        "applicant_now": "用友网络科技股份有限公司",
+                        "org_info_list": [
+                          {
+                            "area": "海淀区",
+                            "city": "北京市",
+                            "country": "中国",
+                            "province": "北京市",
+                            "area_code": "110108",
+                            "city_code": "110000",
+                            "is_normal": "1",
+                            "company_id": "a1e4fe2ab94fb7b1b523c155c5b9ae5d",
+                            "entity_type": "专利权利人",
+                            "company_code": "d08a6dee3c5fd0859f97d393affa5c4a",
+                            "company_name": "用友网络科技股份有限公司",
+                            "table_source": "public.dw_lget_company_info",
+                            "province_code": "110000"
+                          },
+                          {
+                            "area": "海淀区",
+                            "city": "北京市",
+                            "country": "中国",
+                            "province": "北京市",
+                            "area_code": "110108",
+                            "city_code": "110000",
+                            "is_normal": "1",
+                            "company_id": "a1e4fe2ab94fb7b1b523c155c5b9ae5d",
+                            "entity_type": "专利原始权利人",
+                            "company_code": "d08a6dee3c5fd0859f97d393affa5c4a",
+                            "company_name": "用友网络科技股份有限公司",
+                            "table_source": "public.dw_lget_company_info",
+                            "province_code": "110000"
+                          }
+                        ],
+                        "application_code": "CN202311746693.4",
+                        "application_date": "2023-12-19",
+                        "publication_code": "CN117727039A",
+                        "publication_date": "2024-03-19"
+                      },
+                      "dataset": "ads_lget_patent_info",
+                      "recordId": "4334c61f9959422fbf961134ffd4043b",
+                      "observedAt": "2026-08-12T19:13:49.576467575Z"
+                    }
+                  ],
+                  "claimText": "截至本次证据检索，用友网络科技股份有限公司存在至少一条知识产权记录。",
+                  "riskFlags": [],
+                  "explanation": "企业证据工具返回用友网络科技股份有限公司（companyId: d08a6dee3c5fd0859f97d393affa5c4a）存在大量知识产权记录（专利、软件著作权、产品共计2208条），材料主张'存在至少一条知识产权记录'得到验证。",
+                  "materialLocator": {
+                    "fileId": "L3",
+                    "lineEnd": 1,
+                    "lineStart": 1
+                  },
+                  "normalizedClaim": {
+                    "unit": null,
+                    "value": null,
+                    "metric": "intellectualProperty",
+                    "period": "CURRENT",
+                    "operator": "EXISTS"
+                  },
+                  "requiresHumanIntervention": false
+                }
+              ],
+              "variant": {
+                "type": "SKILL",
+                "identifier": "24e515d5-6d0d-4f9a-b981-b44d8d154a77",
+                "contentHash": "29b2fbaaf69ddb754212b08e94452ad21574fa93e5f066600688ee1fefce2b1e"
+              },
+              "evidenceSnapshotId": "362c9b2d-a631-4465-880b-7754e3a85946",
+              "documentSnapshotHash": "ca052bbd4416d5b8478a9a9152aba940bc43ad261ddef986f096accf9e5ade07"
+            },
+            "attempt": 1,
+            "errorCode": null,
+            "durationMs": 34964
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RISK",
+      "material": {
+        "text": "截至本次证据检索，用友网络科技股份有限公司存在至少一条行政处罚记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L4"
+        }
+      },
+      "sampleId": "yonyou-risk",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_adm_punish",
+          "recordId": "599641dda8a9549e7baeacf2cf5f57ca",
+          "toolName": "get_company_risks",
+          "sourceUrl": "urn:hsmap:ads_lget_company_adm_punish:599641dda8a9549e7baeacf2cf5f57ca",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条行政处罚记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "d08a6dee3c5fd0859f97d393affa5c4a",
+        "companyName": "用友网络科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "administrativePenalty",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "用友网络科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_risks",
+          "arguments": {
+            "companyId": "d08a6dee3c5fd0859f97d393affa5c4a"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "atLeastOneRecord": true
+      }
+    },
+    "sampleId": "yonyou-risk",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 51001
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-risk",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120036
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RELATIONSHIP",
+      "material": {
+        "text": "截至本次证据检索，用友网络科技股份有限公司存在至少一条股东、客户或供应商关系记录。",
+        "locator": {
+          "type": "LINE",
+          "value": "L5"
+        }
+      },
+      "sampleId": "yonyou-relation",
+      "edgeCases": [],
+      "expectedStatus": "VERIFIED",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_sholder",
+          "recordId": "561d2841b7e51c86eb0e4c0b4228b41a",
+          "toolName": "get_company_relationships",
+          "sourceUrl": "urn:hsmap:ads_lget_company_sholder:561d2841b7e51c86eb0e4c0b4228b41a",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "至少一条企业关系记录"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "d08a6dee3c5fd0859f97d393affa5c4a",
+        "companyName": "用友网络科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "enterpriseRelationship",
+        "period": "CURRENT",
+        "operator": "EXISTS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "用友网络科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_relationships",
+          "arguments": {
+            "companyId": "d08a6dee3c5fd0859f97d393affa5c4a"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "relationship": "controlled-subsidiary"
+      }
+    },
+    "sampleId": "yonyou-relation",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 29031
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-relation",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 25104
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "用友网络科技股份有限公司 2023 年营业收入为 9152729443 元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L6"
+        }
+      },
+      "sampleId": "yonyou-period-conflict",
+      "edgeCases": [
+        "period-mismatch"
+      ],
+      "expectedStatus": "CONFLICT",
+      "manualEvidence": [
+        {
+          "dataset": "ads_lget_company_revenue",
+          "recordId": "246fd999204b60d5789e30669a1db7d2",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:ads_lget_company_revenue:246fd999204b60d5789e30669a1db7d2",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "report_year=2023,total_sales=979607.1603万元"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "d08a6dee3c5fd0859f97d393affa5c4a",
+        "companyName": "用友网络科技股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "元",
+        "value": "9152729443",
+        "metric": "revenue",
+        "period": "2023",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "用友网络科技股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "d08a6dee3c5fd0859f97d393affa5c4a"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2023",
+        "unitConversions": [
+          "元",
+          "万元"
+        ]
+      }
+    },
+    "sampleId": "yonyou-period-conflict",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-period-conflict",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "RESULT_SCHEMA_INVALID",
+            "durationMs": 40576
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "24e515d5-6d0d-4f9a-b981-b44d8d154a77": {
+        "score": {
+          "accurate": false,
+          "sampleId": "yonyou-period-conflict",
+          "completed": false,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": null,
+            "attempt": 1,
+            "errorCode": "AGENT_EXECUTION_TIMEOUT",
+            "durationMs": 120041
+          }
+        ],
+        "variantId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77"
+      }
+    }
+  }
+]

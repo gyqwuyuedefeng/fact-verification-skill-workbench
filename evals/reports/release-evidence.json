@@ -1,0 +1,113 @@
+{
+  "generatedAt": "2026-08-12T21:20:01.503Z",
+  "evaluationId": "589d49fe-f2d9-4e38-8d25-fca6051a6af9",
+  "oldStableId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+  "candidateId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+  "shadowSummary": {
+    "total": 2,
+    "differentClaims": 254,
+    "completed": 2,
+    "fail": 1,
+    "pass": 1
+  },
+  "shadowTasks": [
+    {
+      "taskId": "c2116e3d-190e-4024-a20f-c3da1396c7e6",
+      "primaryRunId": "c78aca4f-8999-4485-8968-027f8c28f70d"
+    },
+    {
+      "taskId": "1714747b-5dce-48dd-91bb-8e9b69c3302e",
+      "primaryRunId": "3d5f7095-27d1-4e5e-ac8e-a25a621bc411"
+    }
+  ],
+  "postPromotionTask": {
+    "taskId": "5779398d-2278-45b3-b72b-58ac1c87dff0",
+    "primaryRunId": "663c4dfd-eaf9-4143-9e4b-31b8a5cfbf07"
+  },
+  "postRollbackTask": {
+    "taskId": "312bb110-df9f-4e97-bf96-b2ffd46b3f81",
+    "primaryRunId": "ba4bbd11-b1dc-4c94-8134-1b7f76bf3055"
+  },
+  "current": {
+    "revision": 7,
+    "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+    "candidateVersionId": null,
+    "previousStableVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+    "shadowEnabled": false,
+    "action": "ROLLBACK",
+    "reason": "现场证明可一键恢复上一版 Stable",
+    "createdAt": "2026-08-12T21:19:51.810545Z"
+  },
+  "history": [
+    {
+      "revision": 7,
+      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "candidateVersionId": null,
+      "previousStableVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "shadowEnabled": false,
+      "action": "ROLLBACK",
+      "reason": "现场证明可一键恢复上一版 Stable",
+      "createdAt": "2026-08-12T21:19:51.810545Z"
+    },
+    {
+      "revision": 6,
+      "stableVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "candidateVersionId": null,
+      "previousStableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "shadowEnabled": false,
+      "action": "PROMOTE",
+      "reason": "离线门禁通过且真实材料已有人工 PASS，晋升新 Stable",
+      "createdAt": "2026-08-12T21:19:37.553718Z"
+    },
+    {
+      "revision": 5,
+      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "candidateVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "previousStableVersionId": null,
+      "shadowEnabled": true,
+      "action": "SHADOW_START",
+      "reason": "复演前重新开启影子并保留已审核历史",
+      "createdAt": "2026-08-12T21:19:37.422429Z"
+    },
+    {
+      "revision": 4,
+      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "candidateVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "previousStableVersionId": null,
+      "shadowEnabled": false,
+      "action": "SHADOW_STOP",
+      "reason": "验证停止影子后不再创建后台运行",
+      "createdAt": "2026-08-12T21:19:37.251471Z"
+    },
+    {
+      "revision": 3,
+      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "candidateVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "previousStableVersionId": null,
+      "shadowEnabled": true,
+      "action": "SHADOW_START",
+      "reason": "开启后台 Candidate 影子，不改变用户 Stable 正式答案",
+      "createdAt": "2026-08-12T21:18:00.530537Z"
+    },
+    {
+      "revision": 2,
+      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "candidateVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "previousStableVersionId": null,
+      "shadowEnabled": false,
+      "action": "REGISTER",
+      "reason": "三版本同条件评测通过，进入真实材料影子观察",
+      "createdAt": "2026-08-12T21:16:09.755842Z"
+    },
+    {
+      "revision": 1,
+      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "candidateVersionId": null,
+      "previousStableVersionId": null,
+      "shadowEnabled": false,
+      "action": "INITIALIZE",
+      "reason": "首轮 BASELINE 对照门禁通过，建立初始 Stable",
+      "createdAt": "2026-08-12T21:05:52.441866Z"
+    }
+  ]
+}

@@ -1,0 +1,424 @@
+[
+  {
+    "gold": {
+      "category": "FINANCE",
+      "material": {
+        "text": "浪潮信息 2024 年营业收入为 11476736.68 万元。",
+        "locator": {
+          "type": "LINE",
+          "value": "L2"
+        }
+      },
+      "sampleId": "inspur-finance",
+      "edgeCases": [
+        "data-missing"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "inspur-financial-empty-20260813",
+          "toolName": "get_company_financials",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:inspur-financial-empty-20260813",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "当前 dev ES 财务工具 total=0"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "05e321fdd4e87be116c0919054176d78",
+        "companyName": "浪潮电子信息产业股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": "万元",
+        "value": "11476736.68",
+        "metric": "revenue",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "浪潮电子信息产业股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_financials",
+          "arguments": {
+            "companyId": "05e321fdd4e87be116c0919054176d78"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "period": "2024"
+      }
+    },
+    "sampleId": "inspur-finance",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-finance",
+          "completed": true,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": {
+              "runId": "6f3205cc-ce91-4381-8afc-d639c8535f09",
+              "claims": [
+                {
+                  "status": "INSUFFICIENT",
+                  "claimId": "claim_001",
+                  "subject": null,
+                  "evidence": [],
+                  "claimText": "浪潮信息 2024 年营业收入为 11476736.68 万元。",
+                  "riskFlags": [
+                    "主体不唯一",
+                    "证据期间不匹配"
+                  ],
+                  "explanation": "1. 主体不唯一：查询“浪潮信息”返回97个候选企业（如辽宁浪潮信息技术有限公司、江苏浪潮信息咨询有限公司等），无法唯一确定材料所指主体，因此 subject 为 null。2. 证据不足：即使尝试查询排名第一的候选主体（辽宁浪潮信息技术有限公司，companyId: 4eced7d53b85ce62f4d8b43b194d8480），其财务数据仅包含2018-2023年，且2023年及以前年份的 total_sales 均为 null，未包含2024年的营业收入数据。由于主体无法唯一确定且缺乏对应期间的证据，无法核验该主张。",
+                  "materialLocator": {
+                    "fileId": "inspur-finance",
+                    "lineEnd": 2,
+                    "lineStart": 2
+                  },
+                  "normalizedClaim": {
+                    "unit": "万元",
+                    "value": 11476736.68,
+                    "metric": "revenue",
+                    "period": "2024",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": true
+                }
+              ],
+              "variant": {
+                "type": "BASELINE",
+                "identifier": "BASELINE",
+                "contentHash": "fc7f9f6d24cc24f246830c5401e61a7a7ce5d9cfc89e264185c6937262c752a4"
+              },
+              "evidenceSnapshotId": "bc0b593e-f1e1-42c1-8c49-a13a4aed44f1",
+              "documentSnapshotHash": "b34c79be3ed01823ec2bc982e12f0a9876c0d642e7d6eba14b08120f413a5a67"
+            },
+            "attempt": 1,
+            "errorCode": null,
+            "durationMs": 8097
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "b9824010-ee1b-4cea-be32-a7e732297a8c": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-finance",
+          "completed": true,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": {
+              "runId": "40a4dacb-8bc7-483e-bbe7-c715c8e9dd8b",
+              "claims": [
+                {
+                  "status": "INSUFFICIENT",
+                  "claimId": "claim_001",
+                  "subject": null,
+                  "evidence": [],
+                  "claimText": "浪潮信息 2024 年营业收入为 11476736.68 万元。",
+                  "riskFlags": [],
+                  "explanation": "主体不唯一：resolve_company 返回 97 条候选，简称“浪潮信息”对应多家不同公司（如辽宁浪潮、江苏浪潮等），无法唯一确定主体。且财务工具返回的 2024 年数据为空或无匹配记录，无法核验。",
+                  "materialLocator": {
+                    "fileId": "inspur-finance",
+                    "lineEnd": 2,
+                    "lineStart": 2
+                  },
+                  "normalizedClaim": {
+                    "unit": "万元",
+                    "value": 11476736.68,
+                    "metric": "revenue",
+                    "period": "2024",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": true
+                }
+              ],
+              "variant": {
+                "type": "SKILL",
+                "identifier": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+                "contentHash": "ac02b84ce4338bfdea243fefaf1c148e4ed90948defaeef5e0a4172fada86154"
+              },
+              "evidenceSnapshotId": "bc0b593e-f1e1-42c1-8c49-a13a4aed44f1",
+              "documentSnapshotHash": "b34c79be3ed01823ec2bc982e12f0a9876c0d642e7d6eba14b08120f413a5a67"
+            },
+            "attempt": 1,
+            "errorCode": null,
+            "durationMs": 6712
+          }
+        ],
+        "variantId": "b9824010-ee1b-4cea-be32-a7e732297a8c"
+      },
+      "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-finance",
+          "completed": true,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": {
+              "runId": "2d536141-8c45-42a5-b750-fc77b28005bd",
+              "claims": [
+                {
+                  "status": "INSUFFICIENT",
+                  "claimId": "claim_001",
+                  "subject": null,
+                  "evidence": [],
+                  "claimText": "浪潮信息 2024 年营业收入为 11476736.68 万元。",
+                  "riskFlags": [],
+                  "explanation": "主体不唯一：resolve_company 返回 97 条候选，其中多条 company_sname 为'浪潮信息'（如辽宁浪潮信息技术有限公司、江苏浪潮信息咨询有限公司等），无法唯一确定材料所指主体。根据规则，主体不唯一时停止后续取证并输出 INSUFFICIENT。",
+                  "materialLocator": {
+                    "fileId": "inspur-finance",
+                    "lineEnd": 2,
+                    "lineStart": 2
+                  },
+                  "normalizedClaim": {
+                    "unit": "万元",
+                    "value": 11476736.68,
+                    "metric": "revenue",
+                    "period": "2024",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": true
+                }
+              ],
+              "variant": {
+                "type": "SKILL",
+                "identifier": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+                "contentHash": "6ddd7dd413ab70db4c045f64d78aa2c121f96ad0d5ab6ea5f7ac4cb4caf826ff"
+              },
+              "evidenceSnapshotId": "bc0b593e-f1e1-42c1-8c49-a13a4aed44f1",
+              "documentSnapshotHash": "b34c79be3ed01823ec2bc982e12f0a9876c0d642e7d6eba14b08120f413a5a67"
+            },
+            "attempt": 1,
+            "errorCode": null,
+            "durationMs": 6829
+          }
+        ],
+        "variantId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40"
+      }
+    }
+  },
+  {
+    "gold": {
+      "category": "RISK",
+      "material": {
+        "text": "浪潮信息 2024 年不存在任何处罚或欠税。",
+        "locator": {
+          "type": "LINE",
+          "value": "L4"
+        }
+      },
+      "sampleId": "inspur-risk",
+      "edgeCases": [
+        "negative-claim"
+      ],
+      "expectedStatus": "INSUFFICIENT",
+      "manualEvidence": [
+        {
+          "dataset": "mcp-query-scope",
+          "recordId": "inspur-risk-empty-20260813",
+          "toolName": "get_company_risks",
+          "sourceUrl": "urn:hsmap:mcp-query-scope:inspur-risk-empty-20260813",
+          "retrievedAt": "2026-08-12T17:20:00Z",
+          "sourceLocator": "当前 dev ES 风险工具 total=0；空结果不能证明不存在"
+        }
+      ],
+      "expectedSubject": {
+        "companyId": "05e321fdd4e87be116c0919054176d78",
+        "companyName": "浪潮电子信息产业股份有限公司"
+      },
+      "normalizedClaim": {
+        "unit": null,
+        "value": true,
+        "metric": "riskRecordAbsence",
+        "period": "2024",
+        "operator": "EQUALS"
+      },
+      "evidenceRequests": [
+        {
+          "toolName": "resolve_company",
+          "arguments": {
+            "query": "浪潮电子信息产业股份有限公司"
+          }
+        },
+        {
+          "toolName": "get_company_risks",
+          "arguments": {
+            "companyId": "05e321fdd4e87be116c0919054176d78"
+          }
+        }
+      ],
+      "acceptableCriteria": {
+        "negativeClaim": true
+      }
+    },
+    "sampleId": "inspur-risk",
+    "variantResults": {
+      "BASELINE": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-risk",
+          "completed": true,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": {
+              "runId": "a598bfb4-9228-452b-bb72-8bd2bcdcc7bb",
+              "claims": [
+                {
+                  "status": "INSUFFICIENT",
+                  "claimId": "claim-1",
+                  "subject": null,
+                  "evidence": [],
+                  "claimText": "浪潮信息 2024 年不存在任何处罚或欠税。",
+                  "riskFlags": [
+                    "主体不唯一",
+                    "否定性主张无法通过空结果证明"
+                  ],
+                  "explanation": "材料中“浪潮信息”对应多个候选企业（如辽宁浪潮信息技术有限公司、江苏浪潮信息咨询有限公司等），主体不唯一，无法确定具体核验对象。此外，即使针对某一主体查询风险记录为空，也不能证明“不存在”任何处罚或欠税，因为工具返回为空可能仅表示未收录或覆盖不全，无法提供覆盖范围完整的证明。因此，该否定性主张证据不足，需人工介入。",
+                  "materialLocator": {
+                    "fileId": "inspur-risk",
+                    "lineEnd": 4,
+                    "lineStart": 4
+                  },
+                  "normalizedClaim": {
+                    "unit": null,
+                    "value": true,
+                    "metric": "riskRecordAbsence",
+                    "period": "2024",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": true
+                }
+              ],
+              "variant": {
+                "type": "BASELINE",
+                "identifier": "BASELINE",
+                "contentHash": "fc7f9f6d24cc24f246830c5401e61a7a7ce5d9cfc89e264185c6937262c752a4"
+              },
+              "evidenceSnapshotId": "bc0b593e-f1e1-42c1-8c49-a13a4aed44f1",
+              "documentSnapshotHash": "54e7f72b59ec5f4682b2fae627f27e81bbf68e2ea85bbe31bba9b46fc27689ba"
+            },
+            "attempt": 1,
+            "errorCode": null,
+            "durationMs": 6529
+          }
+        ],
+        "variantId": "BASELINE"
+      },
+      "b9824010-ee1b-4cea-be32-a7e732297a8c": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-risk",
+          "completed": true,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": {
+              "runId": "e2865ca9-967d-4a3b-aedd-1461e458feb3",
+              "claims": [
+                {
+                  "status": "INSUFFICIENT",
+                  "claimId": "claim_001",
+                  "subject": null,
+                  "evidence": [],
+                  "claimText": "浪潮信息 2024 年不存在任何处罚或欠税。",
+                  "riskFlags": [],
+                  "explanation": "主体不唯一：'浪潮信息'为简称，resolve_company 返回多个高置信候选（如辽宁浪潮信息技术有限公司、江苏浪潮信息咨询有限公司等），无法唯一确定主体。且风险否定主张（不存在处罚或欠税）即使工具返回空结果也不能证明绝对不存在，需人工介入确认主体及完整风险覆盖范围。",
+                  "materialLocator": {
+                    "fileId": "inspur-risk",
+                    "lineEnd": 4,
+                    "lineStart": 4
+                  },
+                  "normalizedClaim": {
+                    "unit": null,
+                    "value": true,
+                    "metric": "riskRecordAbsence",
+                    "period": "2024",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": true
+                }
+              ],
+              "variant": {
+                "type": "SKILL",
+                "identifier": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+                "contentHash": "ac02b84ce4338bfdea243fefaf1c148e4ed90948defaeef5e0a4172fada86154"
+              },
+              "evidenceSnapshotId": "bc0b593e-f1e1-42c1-8c49-a13a4aed44f1",
+              "documentSnapshotHash": "54e7f72b59ec5f4682b2fae627f27e81bbf68e2ea85bbe31bba9b46fc27689ba"
+            },
+            "attempt": 1,
+            "errorCode": null,
+            "durationMs": 6239
+          }
+        ],
+        "variantId": "b9824010-ee1b-4cea-be32-a7e732297a8c"
+      },
+      "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40": {
+        "score": {
+          "accurate": false,
+          "sampleId": "inspur-risk",
+          "completed": true,
+          "requiresHumanIntervention": true
+        },
+        "attempts": [
+          {
+            "output": {
+              "runId": "81837b1c-aa82-4bb5-b535-4b7ca6642246",
+              "claims": [
+                {
+                  "status": "INSUFFICIENT",
+                  "claimId": "claim_001",
+                  "subject": null,
+                  "evidence": [],
+                  "claimText": "浪潮信息 2024 年不存在任何处罚或欠税。",
+                  "riskFlags": [],
+                  "explanation": "主体不唯一：resolve_company 返回 97 条候选，简称“浪潮信息”对应多个不同公司（如辽宁浪潮信息技术有限公司、江苏浪潮信息咨询有限公司等），无法唯一确定主体。此外，否定性主张（不存在处罚或欠税）即使查询结果为空也不能直接证明“不存在”，需人工介入确认主体及完整证据覆盖。",
+                  "materialLocator": {
+                    "fileId": "inspur-risk",
+                    "lineEnd": 4,
+                    "lineStart": 4
+                  },
+                  "normalizedClaim": {
+                    "unit": null,
+                    "value": true,
+                    "metric": "riskRecordAbsence",
+                    "period": "2024",
+                    "operator": "EQUALS"
+                  },
+                  "requiresHumanIntervention": true
+                }
+              ],
+              "variant": {
+                "type": "SKILL",
+                "identifier": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+                "contentHash": "6ddd7dd413ab70db4c045f64d78aa2c121f96ad0d5ab6ea5f7ac4cb4caf826ff"
+              },
+              "evidenceSnapshotId": "bc0b593e-f1e1-42c1-8c49-a13a4aed44f1",
+              "documentSnapshotHash": "54e7f72b59ec5f4682b2fae627f27e81bbf68e2ea85bbe31bba9b46fc27689ba"
+            },
+            "attempt": 1,
+            "errorCode": null,
+            "durationMs": 6456
+          }
+        ],
+        "variantId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40"
+      }
+    }
+  }
+]

@@ -1,0 +1,12 @@
+{
+  "skillKey": "company-material-fact-check",
+  "version": "v0.1.0+29b2fbaaf69d",
+  "status": "CANDIDATE",
+  "parentVersion": "v0.1.0+d892b6dce065",
+  "contentHash": "29b2fbaaf69ddb754212b08e94452ad21574fa93e5f066600688ee1fefce2b1e",
+  "changeSummary": "减少 reference 往返，强化期间、单位和 evidence recordId 配对",
+  "evaluationRunId": null,
+  "metrics": null,
+  "gateStatus": "PENDING",
+  "knownFailures": []
+}

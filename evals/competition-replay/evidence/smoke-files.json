@@ -1,0 +1,82 @@
+{
+  "generatedAt": "2026-08-12T21:32:06.444Z",
+  "results": [
+    {
+      "fileName": "01-模拟星河智造经营简报.md",
+      "terminalStatus": "COMPLETED",
+      "claimCount": 5,
+      "statuses": [
+        "证据不足",
+        "证据不足",
+        "证据不足",
+        "证据不足",
+        "证据不足"
+      ],
+      "timelineEvents": 7
+    },
+    {
+      "fileName": "02-同名主体核验.txt",
+      "terminalStatus": "COMPLETED",
+      "claimCount": 2,
+      "statuses": [
+        "证据不足",
+        "证据不足"
+      ],
+      "timelineEvents": 7
+    },
+    {
+      "fileName": "03-模拟企业经营指标.csv",
+      "terminalStatus": "COMPLETED",
+      "claimCount": 3,
+      "statuses": [
+        "证据不足",
+        "证据不足",
+        "证据不足"
+      ],
+      "timelineEvents": 7
+    },
+    {
+      "fileName": "06-模拟企业尽调材料.docx",
+      "terminalStatus": "COMPLETED",
+      "claimCount": 3,
+      "statuses": [
+        "证据不足",
+        "证据不足",
+        "证据不足"
+      ],
+      "timelineEvents": 9
+    },
+    {
+      "fileName": "07-模拟企业融资说明.pptx",
+      "terminalStatus": "COMPLETED",
+      "claimCount": 3,
+      "statuses": [
+        "证据不足",
+        "证据不足",
+        "证据不足"
+      ],
+      "timelineEvents": 5
+    },
+    {
+      "fileName": "08-模拟企业财务台账.xlsx",
+      "terminalStatus": "COMPLETED",
+      "claimCount": 2,
+      "statuses": [
+        "证据不足",
+        "证据不足"
+      ],
+      "timelineEvents": 5
+    },
+    {
+      "fileName": "06-模拟企业尽调材料.pdf",
+      "terminalStatus": "COMPLETED",
+      "claimCount": 3,
+      "statuses": [
+        "证据不足",
+        "证据不足",
+        "证据不足"
+      ],
+      "timelineEvents": 5
+    }
+  ]
+}

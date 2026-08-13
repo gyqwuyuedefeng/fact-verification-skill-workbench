@@ -1,0 +1,124 @@
+{
+  "initialDraftId": "58d2c49e-cd1f-4d28-baa0-edab8ac2d82d",
+  "initialCandidate": {
+    "id": "58d2c49e-cd1f-4d28-baa0-edab8ac2d82d",
+    "skillKey": "company-material-fact-check",
+    "version": "v0.1.0+d892b6dce065",
+    "parentVersionId": null,
+    "status": "CANDIDATE",
+    "contentHash": "d892b6dce065f6e138c5f22c8ed6c6ff9c63717722cd2c178d62920a8bf39d6f",
+    "changeSummary": "初始专用事实核验规则",
+    "createdAt": "2026-08-12T16:44:57.144503Z",
+    "frozenAt": "2026-08-12T16:44:57.906692Z"
+  },
+  "rejectedV1EvaluationId": "ea8e420c-2035-4bd2-a51d-e67ae16b55f9",
+  "rejectedV1Reason": "v1 误把股票代码写入内部 companyId，且未结束模型流暴露了缺少真正执行超时；只作历史缺陷证据，不得用于 Stable 或比赛评分。",
+  "rejectedV3MetadataEvaluationId": "2a952f15-66cc-444e-a06c-a533d0791a88",
+  "rejectedV3MetadataReason": "MCP 工具协议元数据漏声明 readOnly/non-destructive/idempotent，证据预取在模型调用前失败；已用合同测试修复，该批次不用于评分。",
+  "rejectedUnlockedParametersEvaluationId": "a49b1497-384c-4912-80c5-8d6b948b58fb",
+  "rejectedUnlockedParametersReason": "诊断批次未在 Agent 与 Run Manifest 中显式锁定 temperature、topP、seed 和 parallelToolCalls；已中断并保留为历史记录，不用于正式评分。",
+  "rejectedIdleTimeoutEvaluationId": "1ca4b9cf-eb74-4e19-9ab6-b831163e7944",
+  "rejectedIdleTimeoutReason": "旧实现把 Reactor timeout 当作总时限，持续 token 会重置计时；真实运行超过 120 秒后中断，已用持续事件回归测试修为绝对截止时间，不用于正式评分。",
+  "rejectedPromptMetadataEvaluationId": "71716920-8c6a-426c-aac5-94f931fe312a",
+  "rejectedPromptMetadataReason": "评测提示把输出 schema 要求的 variant 对象错误展开为 variantType/variantIdentifier/variantContentHash，造成普通对话可用但正式评测大量 schema 失败；已用回归测试统一为嵌套元数据，该批次只作缺陷证据。",
+  "bootstrapCandidate": {
+    "id": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+    "skillKey": "company-material-fact-check",
+    "version": "v0.1.0+6ddd7dd413ab",
+    "parentVersionId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77",
+    "status": "CANDIDATE",
+    "contentHash": "6ddd7dd413ab70db4c045f64d78aa2c121f96ad0d5ab6ea5f7ac4cb4caf826ff",
+    "changeSummary": "修复归一化改写与主索引重复实体选择",
+    "createdAt": "2026-08-12T20:27:52.276645Z",
+    "frozenAt": "2026-08-12T20:27:52.984165794Z"
+  },
+  "skillVersionComparison": {
+    "targetVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+    "baseVersionId": "24e515d5-6d0d-4f9a-b981-b44d8d154a77",
+    "deterministicDiff": " ---\n name: company-material-fact-check\n description: Verify explicit factual claims in authorized company materials against six read-only enterprise evidence tools. Use when processing a deterministic document snapshot that needs traceable claim extraction, company resolution, normalized comparisons, and VERIFIED/CONFLICT/INSUFFICIENT conclusions.\n ---\n \n # 企业材料事实核验\n \n 只核验材料中明确出现、能定位原文的企业事实。不得补写材料未声称的事实，不得使用模型记忆代替工具证据。\n \n ## 执行流程\n \n 1. 直接从文档快照提取一条可核验主张，逐字保留输入已有的 `materialLocator`；不要为单条材料补写其他主张。\n 2. 对每条主张独立调用 `resolve_company`。若多个高置信候选不能唯一判定，停止该主张的后续取证并请求人工确认。\n 3. 按事实类型只调用以下相关工具：\n    - 工商资料：`get_company_profile`\n    - 财务指标：`get_company_financials`\n    - 专利、软著、产品：`get_company_intellectual_property`\n    - 失信、违法、处罚、欠税：`get_company_risks`\n    - 股东、客户、供应商：`get_company_relationships`\n 4. 直接按主体、指标、期间、口径、数值、单位的顺序比较；不要额外读取 reference 文件，减少模型往返。\n 5. 严格输出调用方提供的 JSON schema，不输出 Markdown 解释或 schema 外字段。\n \n ## 硬约束\n \n - `VERIFIED` 必须同时有有效 `materialLocator` 和至少一条带 `dataset`、`recordId`、`observedAt` 的外部证据。\n - 主体不唯一、工具失败、无外部记录、期间不一致或口径无法对齐时输出 `INSUFFICIENT`。\n - 同主体、同指标、同期间和同口径的证据明确不一致时输出 `CONFLICT`。\n - 风险是 `riskFlags`，不能替代三种核验状态。\n - 不把 `companyId` 当作统一社会信用代码；两者必须按证据字段分别保存。\n - 不调用六工具之外的外部能力，不修改任何企业业务数据。\n \n ## 单主张快速路径\n \n - “截至本次证据检索”的工商和存在性事实使用 `CURRENT`；明确年份必须逐字保留。\n - 先从 `resolve_company` 取唯一 `company_code`，再把它作为后续工具的 `companyId`；简称歧义不得猜主体。\n - 财务值先统一元、万元、亿元再比较；证据不一致输出 `CONFLICT`。\n - `VERIFIED`/`CONFLICT` 的 evidence 引用与 items 必须用相同 `recordId` 配对，并原样复制对应 item 为 content。\n - 否定性风险、缺期间、空结果或工具失败一律 `INSUFFICIENT` 且请求人工介入。\n \n+## 归一化与主体消歧\n \n+- `normalizedClaim` 只表达材料原文，不得用证据值重写。“存在至少一条”固定为 `operator=EXISTS`、`value=true`、`unit=null`；金额保留材料原数值和原单位。\n+- 风险否定主张固定为 `metric=riskRecordAbsence`、`operator=EQUALS`、`value=true`；空结果仍是 `INSUFFICIENT`。\n+- 全称查询返回多条同 `company_name` 且同 `uni_code` 的记录时，它们是主索引重复实体，不是业务上的同名公司。最多对前两个不同 `company_code` 调用本主张对应证据工具，选择 `total` 较大者；并列时保留搜索顺序第一条。\n+- 简称只在返回候选中恰好一条 `company_sname` 与材料简称完全相同时可唯一定位；不得因公司全称仅包含该短词就选第一条。\n+- 工商主张不需要为选主体扫描其他索引；完整企业全称的重复记录并列时取第一条。\n+\n+## 最终输出前自检\n+\n+- 每条输入只保留一个对应主张，`claimText`、locator 和归一化五元组不得改写。\n+- `subject.companyId` 必须来自主体工具，不能误填股票代码或统一社会信用代码。\n+- `VERIFIED`/`CONFLICT` 必须有与 items 同 recordId 的 evidence；否则降级为 `INSUFFICIENT`。\n+- 输出前检查顶层运行元数据逐字复制、JSON 无代码围栏且只含 schema 字段。\n+\n+\n # references\n [{\"path\": \"references/claim-normalization.md\", \"content\": \"# 主张提取与归一化\\n\\n## 可核验主张\\n\\n只提取含有明确企业主体或可解析主体线索，并且至少满足下列一种条件的陈述：\\n\\n- 工商属性：成立日期、法人、注册资本、经营状态、地址、经营范围、行业。\\n- 财务事实：营业收入、净利润、同比、净利率、资产负债率及明确报告期。\\n- 知识产权：专利、软件著作权、产品名称、数量或状态。\\n- 企业风险：失信、违法、行政处罚、欠税事实。\\n- 企业关系：股东、客户、供应商及金额或比例。\\n\\n宣传形容词、愿景、预测和没有判断标准的“领先”“优秀”不作为事实主张。\\n\\n## 归一化字段\\n\\n- `metric`：使用最小明确指标名，不合并不同会计口径。\\n- `period`：优先使用明确年月、年度或截止日；材料未给期间时保留“未说明”，不得猜测。\\n- `operator`：等于、大小比较、范围或存在性。\\n- `value`：使用可比较的数值、字符串或布尔值。\\n- `unit`：保留材料单位；比较前可换算元/万元/亿元，但同时保留原值与原单位。\\n\\n每条主张必须复制解析器给出的 locator。不要根据文本内容重新估算页码、行号、段落号或单元格。\\n\"}, {\"path\": \"references/evidence-rules.md\", \"content\": \"# 证据判定规则\\n\\n## 比较顺序\\n\\n1. 主体：`companyId` 必须唯一确认；曾用名只能在主体工具明确关联后使用。\\n2. 指标：区分营业收入、主营收入、净利润、利润总额等不同口径。\\n3. 期间：年度、季度、截止日必须对应；不能用其他年份“近似验证”。\\n4. 单位：完成确定性换算后比较，同时保留原单位。\\n5. 数值：材料明确使用“约”“超过”“不低于”时按相应 operator 比较。\\n\\n## 状态\\n\\n- `VERIFIED`：主体、指标、期间、口径和数值均可对齐，且至少一条外部记录直接支持。\\n- `CONFLICT`：上述维度可对齐，但外部记录给出不兼容结果。\\n- `INSUFFICIENT`：缺记录、缺期间、口径不同、主体歧义、工具错误或仅有间接推断。\\n\\n工具返回多条记录时逐条保留来源。解释应指出关键比较维度，不得用“综合判断”等无法复现的表述。\\n\"}]",
+    "summaryStatus": "COMPLETED",
+    "generatedSummary": {
+      "headline": "目标版本在原有核验流程基础上，新增归一化消歧规则与输出前自检机制，强化主体匹配与格式约束。",
+      "changes": [
+        "新增“归一化与主体消歧”章节，明确normalizedClaim表达规范、风险否定主张固定格式、全称重复实体处理逻辑、简称唯一匹配规则及工商主张主体选取原则。",
+        "新增“最终输出前自检”章节，规定单主张保留原则、subject.companyId来源限制、证据recordId配对校验及输出格式与元数据检查要求。",
+        "原有执行流程、硬约束、单主张快速路径及references内容均保持不变。"
+      ],
+      "reviewRisks": [
+        "新增简称唯一匹配与全称重复实体处理逻辑增加了分支判断复杂度，需验证工具返回数据结构是否完全支持该规则。",
+        "风险否定主张固定使用特定metric和operator，需确认下游解析系统已兼容该字段定义，避免归一化失败。",
+        "强格式约束（JSON无代码围栏、元数据逐字复制）若模型未严格遵循易导致下游解析中断，建议增加容错或明确错误处理机制。"
+      ]
+    },
+    "advisory": "模型生成、仅供审核参考",
+    "errorCode": null
+  },
+  "rejectedLocatorContractEvaluationId": "c2d250f6-819d-4e49-9ba7-c4a411fcc4db",
+  "rejectedLocatorContractReason": "固定数据集中的 LINE/L1 定位曾原样进入模型提示，而结果契约要求 fileId/lineStart/lineEnd，导致大量结构化输出校验失败；现已在模型输入边界做确定性投影，并让 Run Manifest 锁定投影后的实际输入。该批次只作历史缺陷证据。",
+  "rejectedCandidateRegressionEvaluationId": "eca2e81d-e45c-4a21-98ec-2f271a677f83",
+  "rejectedCandidateRegressionReason": "候选 Skill 把存在性主张改写为数量主张，并直接选用主索引重复实体的第一个 company_code，导致归一化与下游证据不匹配；保留为评测驱动优化证据。",
+  "formalInitialEvaluationId": "884bdd4f-34dc-475a-9f6a-4b721cf7dfbc",
+  "formalInitialEvaluation": {
+    "id": "884bdd4f-34dc-475a-9f6a-4b721cf7dfbc",
+    "datasetVersion": "public-tech-2024-v3",
+    "gateStatus": "FAIL",
+    "metrics": {
+      "BASELINE": {
+        "accuracy": {
+          "value": 0.6,
+          "numerator": 18,
+          "denominator": 30
+        },
+        "stability": {
+          "value": 0.8,
+          "numerator": 8,
+          "denominator": 10
+        },
+        "completionRate": {
+          "value": 0.8333333333333334,
+          "numerator": 25,
+          "denominator": 30
+        },
+        "humanInterventionRate": {
+          "value": 0.4666666666666667,
+          "numerator": 14,
+          "denominator": 30
+        }
+      },
+      "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40": {
+        "accuracy": {
+          "value": 0.26666666666666666,
+          "numerator": 8,
+          "denominator": 30
+        },
+        "stability": {
+          "value": 0.2,
+          "numerator": 2,
+          "denominator": 10
+        },
+        "completionRate": {
+          "value": 0.5666666666666667,
+          "numerator": 17,
+          "denominator": 30
+        },
+        "humanInterventionRate": {
+          "value": 0.8,
+          "numerator": 24,
+          "denominator": 30
+        }
+      }
+    },
+    "versionCard": {
+      "skillKey": "company-material-fact-check",
+      "version": "v0.1.0+6ddd7dd413ab",
+      "status": "CANDIDATE",
+      "parentVersion": "v0.1.0+29b2fbaaf69d",
+      "contentHash": "6ddd7dd413ab70db4c045f64d78aa2c121f96ad0d5ab6ea5f7ac4cb4caf826ff",
+      "changeSummary": "修复归一化改写与主索引重复实体选择",
+      "evaluationRunId": null,
+      "metrics": null,
+      "gateStatus": "PENDING",
+      "knownFailures": []
+    }
+  }
+}

@@ -1,0 +1,204 @@
+{
+  "verification": {
+    "title": "事实核验 Skill 工作台",
+    "headings": [
+      "企业材料事实核验"
+    ],
+    "links": [
+      "事实核验对话",
+      "对照评测",
+      "Skill 版本",
+      "影子与发布"
+    ],
+    "buttons": [
+      " 通用基线 不加载 Skill",
+      " 当前 Stable 正式 Skill",
+      "",
+      "发送核验"
+    ],
+    "inputs": [
+      {
+        "tag": "TEXTAREA",
+        "type": null,
+        "placeholder": "粘贴待核验的企业材料，或写下对附件的补充说明。Enter 发送，Shift+Enter 换行。",
+        "value": ""
+      },
+      {
+        "tag": "INPUT",
+        "type": "file",
+        "placeholder": null,
+        "value": ""
+      }
+    ],
+    "body": "FV\n事实核验\nSkill Workbench\n普通使用\n事实核验对话\n管理控制台\n对照评测\nSkill 版本\n影子与发布\n 管理员演示账号 · 未启用权限隔离\n\nVERIFY / CHAT\n\n企业材料事实核验\n\n粘贴材料文字或上传文件，选择通用基线或当前 Stable，实时查看 Agent 如何形成可追溯结论。\n\n通用基线\n通用基线\n不加载 Skill\n当前 Stable\n正式 Skill\n＋ 添加文件\n发送核验\n发送后会出现一张实时任务卡\n01 输入快照\n02 执行轨迹\n03 核验主张"
+  },
+  "evaluation": {
+    "title": "事实核验 Skill 工作台",
+    "headings": [
+      "管理评测"
+    ],
+    "links": [
+      "事实核验对话",
+      "对照评测",
+      "Skill 版本",
+      "影子与发布"
+    ],
+    "buttons": [
+      "评测批次",
+      "按版本汇总",
+      "版本对比",
+      "2026/8/13 05:09:04public-tech-2024-v3 · 30 条 · 3 变体589d49fe",
+      "2026/8/13 05:01:32public-tech-2024-v3 · 30 条 · 2 变体bc9638c9",
+      "2026/8/13 04:28:25public-tech-2024-v3 · 30 条 · 2 变体884bdd4f",
+      "2026/8/13 04:06:05public-tech-2024-v3 · 30 条 · 2 变体eca2e81d",
+      "2026/8/13 03:13:38public-tech-2024-v3 · 30 条 · 2 变体c2d250f6",
+      "2026/8/13 02:45:05public-tech-2024-v3 · 30 条 · 2 变体71716920",
+      "2026/8/13 02:24:40public-tech-2024-v3 · 30 条 · 2 变体1ca4b9cf",
+      "2026/8/13 02:10:46public-tech-2024-v3 · 30 条 · 2 变体a49b1497",
+      "2026/8/13 02:05:11public-tech-2024-v3 · 30 条 · 2 变体2a952f15",
+      "2026/8/13 00:49:03public-tech-2024-v1 · 30 条 · 2 变体ea8e420c",
+      "运行 BASELINE + Stable + Candidate"
+    ],
+    "inputs": [
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": null,
+        "value": "public-tech-2024-v3"
+      },
+      {
+        "tag": "INPUT",
+        "type": "checkbox",
+        "placeholder": null,
+        "value": "on"
+      },
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": "冻结 Stable ID",
+        "value": ""
+      },
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": "冻结 Candidate ID",
+        "value": ""
+      }
+    ],
+    "body": "FV\n事实核验\nSkill Workbench\n普通使用\n事实核验对话\n管理控制台\n对照评测\nSkill 版本\n影子与发布\n 管理员演示账号 · 未启用权限隔离\n\nADMIN / EVALUATION\n\n管理评测\n\n用评测批次保留每次同条件事实，用版本汇总串联历史，用直接对比回答这一版到底改好了什么。\n\nGATE PENDING\n评测批次\n按版本汇总\n版本对比\nH\n历史评测\n不可覆盖 · 新到旧\n2026/8/13 05:09:04\npublic-tech-2024-v3 · 30 条 · 3 变体\n589d49fe\n2026/8/13 05:01:32\npublic-tech-2024-v3 · 30 条 · 2 变体\nbc9638c9\n2026/8/13 04:28:25\npublic-tech-2024-v3 · 30 条 · 2 变体\n884bdd4f\n2026/8/13 04:06:05\npublic-tech-2024-v3 · 30 条 · 2 变体\neca2e81d\n2026/8/13 03:13:38\npublic-tech-2024-v3 · 30 条 · 2 变体\nc2d250f6\n2026/8/13 02:45:05\npublic-tech-2024-v3 · 30 条 · 2 变体\n71716920\n2026/8/13 02:24:40\npublic-tech-2024-v3 · 30 条 · 2 变体\n1ca4b9cf\n2026/8/13 02:10:46\npublic-tech-2024-v3 · 30 条 · 2 变体\na49b1497\n2026/8/13 02:05:11\npublic-tech-2024-v3 · 30 条 · 2 变体\n2a952f15\n2026/8/13 00:49:03\npublic-tech-2024-v1 · 30 条 · 2 变体\nea8e420c\n01\n新建同条件评测\n唯一变化：基线指令或冻结 Skill\n金标数据集\n首次建立 Stable（BASELINE + 首个 Candidate）\nStable 版本 ID\nCandidate 版本 ID\n运行 BASELINE + Stable + Candidate\n02\n同条件锁定\nRun Manifest 可复现识别值\nDATASET\n待选择\nMODEL\n待选择\nPARAMS\n待选择\nTOOLS\n待选择\nEVIDENCE\n待选择\nOUTPUT\n待选择\n03\n四项核心指标\n选择一个历史批次\n这里展示每项指标的定义、分子、分母和百分比。\n04\n单样本下钻\n金标、各变体评分与原始输出\n选择完成批次后加载样本。\n05\nCandidate 门禁\n硬检查原始原因\n等待门禁。"
+  },
+  "skills": {
+    "title": "事实核验 Skill 工作台",
+    "headings": [
+      "Skill 版本实验室"
+    ],
+    "links": [
+      "事实核验对话",
+      "对照评测",
+      "Skill 版本",
+      "影子与发布"
+    ],
+    "buttons": [
+      "请先选择一个版本",
+      " 保存 DRAFT ",
+      " 冻结为 Candidate ",
+      "ARCHIVEDv0.1.0+ac02b84ce433修复正向存在性主张空结果误判为冲突ac02b84ce433",
+      "STABLEv0.1.0+6ddd7dd413ab修复归一化改写与主索引重复实体选择6ddd7dd413ab",
+      "CANDIDATEv0.1.0+29b2fbaaf69d减少 reference 往返，强化期间、单位和 evidence recordId 配对29b2fbaaf69d",
+      "CANDIDATEv0.1.0+d892b6dce065初始专用事实核验规则d892b6dce065",
+      "生成升级说明"
+    ],
+    "inputs": [
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": null,
+        "value": "修复主体歧义或已知失败样本"
+      },
+      {
+        "tag": "TEXTAREA",
+        "type": null,
+        "placeholder": "创建 DRAFT 后，在这里粘贴或调整 SKILL.md",
+        "value": ""
+      },
+      {
+        "tag": "TEXTAREA",
+        "type": null,
+        "placeholder": null,
+        "value": "[]"
+      },
+      {
+        "tag": "SELECT",
+        "type": null,
+        "placeholder": null,
+        "value": ""
+      },
+      {
+        "tag": "SELECT",
+        "type": null,
+        "placeholder": null,
+        "value": ""
+      }
+    ],
+    "body": "FV\n事实核验\nSkill Workbench\n普通使用\n事实核验对话\n管理控制台\n对照评测\nSkill 版本\n影子与发布\n 管理员演示账号 · 未启用权限隔离\n\nADMIN / SKILL VERSION\n\nSkill 版本实验室\n\n只管理一个事实核验目标：DRAFT 可编辑，冻结 Candidate 后内容不可变。\n\n请先选择一个版本\n01\nDRAFT 编辑\nSKILL.md + references + 变更说明\n变更说明\nSKILL.md\nreferences JSON\n保存 DRAFT\n冻结为 Candidate\n02\n不可变版本\nDRAFT / CANDIDATE / STABLE / ARCHIVED\nARCHIVED\nv0.1.0+ac02b84ce433\n修复正向存在性主张空结果误判为冲突\nac02b84ce433\nSTABLE\nv0.1.0+6ddd7dd413ab\n修复归一化改写与主索引重复实体选择\n6ddd7dd413ab\nCANDIDATE\nv0.1.0+29b2fbaaf69d\n减少 reference 往返，强化期间、单位和 evidence recordId 配对\n29b2fbaaf69d\nCANDIDATE\nv0.1.0+d892b6dce065\n初始专用事实核验规则\nd892b6dce065\n03\n版本卡\nGATE PENDING\n选择一个冻结版本查看版本卡。\n04\n版本升级说明\n手动触发 · AI 说明不参与发布门禁\n目标版本\n请选择\nv0.1.0+ac02b84ce433 · ARCHIVED\nv0.1.0+6ddd7dd413ab · STABLE\nv0.1.0+29b2fbaaf69d · CANDIDATE\nv0.1.0+d892b6dce065 · CANDIDATE\n基准版本\n请选择上一版或当前 Stable\nv0.1.0+ac02b84ce433 · ARCHIVED\nv0.1.0+6ddd7dd413ab · STABLE\nv0.1.0+29b2fbaaf69d · CANDIDATE\nv0.1.0+d892b6dce065 · CANDIDATE\n生成升级说明\n选择目标版本与基准版本，再由管理员手动生成说明。"
+  },
+  "release": {
+    "title": "事实核验 Skill 工作台",
+    "headings": [
+      "影子与发布"
+    ],
+    "links": [
+      "事实核验对话",
+      "对照评测",
+      "Skill 版本",
+      "影子与发布"
+    ],
+    "buttons": [
+      "注册 Candidate",
+      "开启影子",
+      "停止影子",
+      "晋升 Stable",
+      "回滚上一版"
+    ],
+    "inputs": [
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": null,
+        "value": ""
+      },
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": null,
+        "value": ""
+      },
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": null,
+        "value": "同条件评测通过，进入真实材料影子验证"
+      },
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": "企业或文件",
+        "value": ""
+      },
+      {
+        "tag": "SELECT",
+        "type": null,
+        "placeholder": null,
+        "value": ""
+      },
+      {
+        "tag": "INPUT",
+        "type": null,
+        "placeholder": "Candidate 版本",
+        "value": ""
+      }
+    ],
+    "body": "FV\n事实核验\nSkill Workbench\n普通使用\n事实核验对话\n管理控制台\n对照评测\nSkill 版本\n影子与发布\n 管理员演示账号 · 未启用权限隔离\n\nADMIN / SHADOW RELEASE\n\n影子与发布\n\nCandidate 不替换正式结果；正式结果始终来自 Stable，人工复核后台观察后再决定晋升或回滚。\n\nSHADOW OFF\n01\n发布控制\n单一 Stable · 单一 Candidate\nREVISION\n7\nACTION\nROLLBACK\nSTABLE\nfc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40\nCANDIDATE\nNONE\nCandidate 版本 ID\n通过门禁的评测 ID\n操作原因\n注册 Candidate\n开启影子\n停止影子\n晋升 Stable\n回滚上一版\n02\n发布历史\n追加记录，不覆盖\nR7\nROLLBACK\n现场证明可一键恢复上一版 Stable\n2026/8/13 05:19:51\nR6\nPROMOTE\n离线门禁通过且真实材料已有人工 PASS，晋升新 Stable\n2026/8/13 05:19:37\nR5\nSHADOW_START\n复演前重新开启影子并保留已审核历史\n2026/8/13 05:19:37\nR4\nSHADOW_STOP\n验证停止影子后不再创建后台运行\n2026/8/13 05:19:37\nR3\nSHADOW_START\n开启后台 Candidate 影子，不改变用户 Stable 正式答案\n2026/8/13 05:18:00\nR2\nREGISTER\n三版本同条件评测通过，进入真实材料影子观察\n2026/8/13 05:16:09\nR1\nINITIALIZE\n首轮 BASELINE 对照门禁通过，建立初始 Stable\n2026/8/13 05:05:52\n03\n真实材料影子观察\n影子真实材料没有金标，不计算准确率\n总任务\n2\n运行完成\n2\n人工 PASS\n1\n人工 FAIL\n1\n差异主张\n350\n全部复核状态\nPENDING\nPASS\nFAIL\n2026/8/13 05:18:14\n北京金山办公软件股份有限公司\n05-影子灰度-金山办公风险事实.md\nStable / Candidate\nfc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40\nb9824010-ee1b-4cea-be32-a7e732297a8c\n观察结果\nFAIL\n一致 1 · 主张差异 175\n2026/8/13 05:18:01\n科大讯飞股份有限公司\n04-影子灰度-科大讯飞经营事实.md\nStable / Candidate\nfc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40\nb9824010-ee1b-4cea-be32-a7e732297a8c\n观察结果\nPASS\n一致 1 · 主张差异 175"
+  },
+  "diagnostics": []
+}

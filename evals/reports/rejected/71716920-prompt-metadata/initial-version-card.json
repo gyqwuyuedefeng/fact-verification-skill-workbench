@@ -1,0 +1,12 @@
+{
+  "skillKey": "company-material-fact-check",
+  "version": "v0.1.0+d892b6dce065",
+  "status": "CANDIDATE",
+  "parentVersion": null,
+  "contentHash": "d892b6dce065f6e138c5f22c8ed6c6ff9c63717722cd2c178d62920a8bf39d6f",
+  "changeSummary": "初始专用事实核验规则",
+  "evaluationRunId": null,
+  "metrics": null,
+  "gateStatus": "PENDING",
+  "knownFailures": []
+}

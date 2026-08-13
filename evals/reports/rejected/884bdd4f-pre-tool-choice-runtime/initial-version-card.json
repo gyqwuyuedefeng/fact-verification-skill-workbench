@@ -1,0 +1,12 @@
+{
+  "skillKey": "company-material-fact-check",
+  "version": "v0.1.0+6ddd7dd413ab",
+  "status": "CANDIDATE",
+  "parentVersion": "v0.1.0+29b2fbaaf69d",
+  "contentHash": "6ddd7dd413ab70db4c045f64d78aa2c121f96ad0d5ab6ea5f7ac4cb4caf826ff",
+  "changeSummary": "修复归一化改写与主索引重复实体选择",
+  "evaluationRunId": null,
+  "metrics": null,
+  "gateStatus": "PENDING",
+  "knownFailures": []
+}

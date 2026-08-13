@@ -1,0 +1,71 @@
+{
+  "testedAt": "2026-08-12T21:48:48.159Z",
+  "protocolVersion": "2025-03-26",
+  "endpoint": "/mcp",
+  "toolNames": [
+    "resolve_company",
+    "get_company_profile",
+    "get_company_financials",
+    "get_company_intellectual_property",
+    "get_company_risks",
+    "get_company_relationships"
+  ],
+  "resolvedCompanyIds": {
+    "科大讯飞股份有限公司": "ef865a606f84bf2dd88486482840eab6",
+    "北京金山办公软件股份有限公司": "5533db99386bc889fc52566b68ad2172",
+    "深信服科技股份有限公司": "bd62524db001604e9a816abd1938434d",
+    "浪潮电子信息产业股份有限公司": "05e321fdd4e87be116c0919054176d78",
+    "用友网络科技股份有限公司": "d08a6dee3c5fd0859f97d393affa5c4a"
+  },
+  "toolTotalsByCompany": {
+    "科大讯飞股份有限公司": {
+      "get_company_profile": 1,
+      "get_company_financials": 21,
+      "get_company_intellectual_property": 9779,
+      "get_company_risks": 5,
+      "get_company_relationships": 2196
+    },
+    "北京金山办公软件股份有限公司": {
+      "get_company_profile": 1,
+      "get_company_financials": 12,
+      "get_company_intellectual_property": 2011,
+      "get_company_risks": 2,
+      "get_company_relationships": 331
+    },
+    "深信服科技股份有限公司": {
+      "get_company_profile": 1,
+      "get_company_financials": 12,
+      "get_company_intellectual_property": 4653,
+      "get_company_risks": 1,
+      "get_company_relationships": 965
+    },
+    "浪潮电子信息产业股份有限公司": {
+      "get_company_profile": 1,
+      "get_company_financials": 0,
+      "get_company_intellectual_property": 0,
+      "get_company_risks": 0,
+      "get_company_relationships": 6
+    },
+    "用友网络科技股份有限公司": {
+      "get_company_profile": 1,
+      "get_company_financials": 28,
+      "get_company_intellectual_property": 2208,
+      "get_company_risks": 13,
+      "get_company_relationships": 2199
+    }
+  },
+  "validCaseTotals": {
+    "resolve_company": 14,
+    "get_company_profile": 1,
+    "get_company_financials": 21,
+    "get_company_intellectual_property": 9779,
+    "get_company_risks": 5,
+    "get_company_relationships": 2196
+  },
+  "emptyCasesPassed": 6,
+  "invalidCasesPassed": 6,
+  "legacyStatuses": {
+    "/sse": 404,
+    "/mcp/message": 404
+  }
+}

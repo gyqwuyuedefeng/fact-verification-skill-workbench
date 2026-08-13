@@ -1,0 +1,12 @@
+{
+  "skillKey": "company-material-fact-check",
+  "version": "v0.1.0+ac02b84ce433",
+  "status": "CANDIDATE",
+  "parentVersion": "v0.1.0+6ddd7dd413ab",
+  "contentHash": "ac02b84ce4338bfdea243fefaf1c148e4ed90948defaeef5e0a4172fada86154",
+  "changeSummary": "修复正向存在性主张空结果误判为冲突",
+  "evaluationRunId": null,
+  "metrics": null,
+  "gateStatus": "PENDING",
+  "knownFailures": []
+}
