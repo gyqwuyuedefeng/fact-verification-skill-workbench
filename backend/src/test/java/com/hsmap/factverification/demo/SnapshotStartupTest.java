@@ -34,6 +34,9 @@ class SnapshotStartupTest {
     @Autowired
     private Environment environment;
 
+    @Autowired
+    private DemoAdminProperties demoAdminProperties;
+
     /** 阻止验收启动连接共享 PostgreSQL；身份检查已由测试配置明确关闭。 */
     @MockitoBean
     private DataSource dataSource;
@@ -54,5 +57,7 @@ class SnapshotStartupTest {
         assertThat(environment.getActiveProfiles()).containsExactly("test");
         assertThat(environment.getProperty("spring.cloud.nacos.discovery.register-enabled", Boolean.class))
                 .isFalse();
+        assertThat(demoAdminProperties.storageSwapMode())
+                .isEqualTo(DemoAdminProperties.StorageSwapMode.COPY_VERIFY);
     }
 }

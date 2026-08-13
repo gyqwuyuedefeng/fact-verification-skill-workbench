@@ -200,6 +200,7 @@ public class SnapshotArchiveService {
                     try {
                         ExportSelection selection = new ExportSelection();
                         Map<String, SnapshotManifest.TableEntry> tables = exportTables(zip, selection);
+                        requireNoEmptySlotRelations(selection.relations());
                         List<SnapshotManifest.FileEntry> files = exportManagedFiles(zip, selection);
                         manifest[0] =
                                 new SnapshotManifest(SnapshotManifest.FORMAT_VERSION, Instant.now(), tables, files);
@@ -303,6 +304,8 @@ public class SnapshotArchiveService {
                 } else if (table == SnapshotTable.SKILL_VERSION) {
                     ObjectNode row = requireObjectRow(json);
                     selection.skillVersions().put(requiredUuid(row, "id"), requiredText(row, "status"));
+                } else {
+                    observeEmptySlotRelations(selection.relations(), table, requireObjectRow(json));
                 }
                 byte[] bytes = normalized.getBytes(StandardCharsets.UTF_8);
                 if (bytes.length > MAX_JSONL_LINE_BYTES) {
@@ -404,6 +407,7 @@ public class SnapshotArchiveService {
                 if (Files.exists(upload, LinkOption.NOFOLLOW_LINKS)) {
                     throw new ServiceException("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID", "空上传槽不应包含占位文件");
                 }
+                selection.relations().emptySlotTaskIds().add(UUID.fromString(taskId));
                 row.put("upload_path", "uploads/" + taskId + "/pending-upload");
                 return writeJson(row);
             }
@@ -852,7 +856,19 @@ public class SnapshotArchiveService {
             optionalUuid(row, "parent_version_id");
             optionalUuid(row, "registered_evaluation_id");
         });
-        readRows(staged, SnapshotTable.VERIFICATION_TASK, json -> normalizeImportedTaskRow(staged, json));
+        EmptySlotRelations relations = new EmptySlotRelations();
+        readRows(staged, SnapshotTable.VERIFICATION_TASK, json -> {
+            ObjectNode row = requireObjectRow(json);
+            normalizeImportedTaskRow(staged, writeJson(row));
+            if (isExactEmptyUploadSlot(row)) {
+                addBounded(relations.emptySlotTaskIds(), requiredCanonicalUuid(row, "id"));
+            }
+        });
+        for (SnapshotTable table : List.of(
+                SnapshotTable.VERIFICATION_RUN, SnapshotTable.CLAIM, SnapshotTable.EVIDENCE_SNAPSHOT)) {
+            readRows(staged, table, json -> observeEmptySlotRelations(relations, table, requireObjectRow(json)));
+        }
+        requireNoEmptySlotRelations(relations);
     }
 
     /**
@@ -950,7 +966,12 @@ public class SnapshotArchiveService {
      * uploads/{taskId}/pending-upload；任何近似状态继续走真实文件存在性门禁。
      */
     private static boolean isExactEmptyUploadSlot(ObjectNode row) {
-        return row.path("status").isTextual()
+        UUID taskId = canonicalUuidOrNull(row.get("id"));
+        return taskId != null
+                && row.path("input_type").isTextual()
+                && "FILE".equals(row.path("input_type").textValue())
+                && isExplicitNull(row, "user_message")
+                && row.path("status").isTextual()
                 && "UPLOADED".equals(row.path("status").textValue())
                 && row.path("original_file_name").isTextual()
                 && "pending-upload".equals(row.path("original_file_name").textValue())
@@ -960,10 +981,80 @@ public class SnapshotArchiveService {
                 && row.path("file_size").longValue() == 1L
                 && row.path("file_hash").isTextual()
                 && "0".repeat(64).equals(row.path("file_hash").textValue())
+                && row.path("shadow_requested").isBoolean()
+                && !row.path("shadow_requested").booleanValue()
                 && isExplicitNull(row, "parser_version")
                 && isExplicitNull(row, "document_snapshot")
                 && isExplicitNull(row, "document_snapshot_hash")
-                && isExplicitNull(row, "evidence_snapshot_id");
+                && isExplicitNull(row, "evidence_snapshot_id")
+                && isExplicitNull(row, "error_code")
+                && isExplicitNull(row, "error_summary")
+                && row.path("created_at").isTextual()
+                && row.path("updated_at").isTextual()
+                && row.path("created_at").textValue().equals(row.path("updated_at").textValue());
+    }
+
+    /** UUID 必须能解析且文本等于 UUID 的小写连字符规范形式，避免同一 task 产生多种路径身份。 */
+    private static UUID canonicalUuidOrNull(JsonNode value) {
+        if (value == null || !value.isTextual()) {
+            return null;
+        }
+        try {
+            UUID parsed = UUID.fromString(value.textValue());
+            return parsed.toString().equals(value.textValue()) ? parsed : null;
+        } catch (IllegalArgumentException exception) {
+            return null;
+        }
+    }
+
+    /** 需要形成受限关系集合时，非法或非规范 UUID 统一作为快照 JSONL 错误拒绝。 */
+    private static UUID requiredCanonicalUuid(ObjectNode row, String field) {
+        UUID parsed = canonicalUuidOrNull(row.get(field));
+        if (parsed == null) {
+            throw new ServiceException("DEMO_SNAPSHOT_JSONL_INVALID", "快照表 UUID 字段不是规范形式：" + field);
+        }
+        return parsed;
+    }
+
+    /** 仅收集空上传槽所需的三类关系，不扩展成通用七表关系验证器。 */
+    private static void observeEmptySlotRelations(EmptySlotRelations relations, SnapshotTable table, ObjectNode row) {
+        if (relations.emptySlotTaskIds().isEmpty()) {
+            return;
+        }
+        if (table == SnapshotTable.VERIFICATION_RUN) {
+            UUID runId = requiredCanonicalUuid(row, "id");
+            UUID taskId = requiredCanonicalUuid(row, "task_id");
+            if (relations.emptySlotTaskIds().contains(taskId)) {
+                addBounded(relations.emptySlotRunIds(), runId);
+                relations.invalidRelationFound()[0] = true;
+            }
+        } else if (table == SnapshotTable.CLAIM) {
+            UUID runId = requiredCanonicalUuid(row, "run_id");
+            if (relations.emptySlotRunIds().contains(runId)) {
+                relations.invalidRelationFound()[0] = true;
+            }
+        } else if (table == SnapshotTable.EVIDENCE_SNAPSHOT
+                && "TASK".equals(row.path("owner_type").asText())) {
+            UUID ownerId = requiredCanonicalUuid(row, "owner_id");
+            if (relations.emptySlotTaskIds().contains(ownerId)) {
+                relations.invalidRelationFound()[0] = true;
+            }
+        }
+    }
+
+    /** 当前快照上限内集合最多保留 2000 个关系 ID，超过即失败关闭，避免恶意 JSONL 放大堆内存。 */
+    private static void addBounded(Set<UUID> ids, UUID id) {
+        if (!ids.contains(id) && ids.size() >= 2_000) {
+            throw new ServiceException("DEMO_SNAPSHOT_RELATION_LIMIT_EXCEEDED", "快照空上传槽关系数量超过限制");
+        }
+        ids.add(id);
+    }
+
+    /** 空槽不能有 run/claim/TASK evidence；在完整扫描后统一拒绝，证明 claim 关系也已检查。 */
+    private static void requireNoEmptySlotRelations(EmptySlotRelations relations) {
+        if (relations.invalidRelationFound()[0]) {
+            throw new ServiceException("DEMO_SNAPSHOT_EMPTY_SLOT_RELATION_INVALID", "空上传槽包含不允许的核验运行、声明或任务证据");
+        }
     }
 
     /** 空槽签名要求字段真实存在且为 JSON null，缺字段不能被 path().isMissingNode() 冒充。 */
@@ -1355,9 +1446,18 @@ public class SnapshotArchiveService {
     private record SkillReferenceRestore(UUID id, UUID parentVersionId, UUID registeredEvaluationId) {}
 
     /** 七表快照读取时同步收集实际文件引用，避免事后再查数据库产生跨视图。 */
-    private record ExportSelection(Set<Path> uploadFiles, Map<UUID, String> skillVersions) {
+    private record ExportSelection(
+            Set<Path> uploadFiles, Map<UUID, String> skillVersions, EmptySlotRelations relations) {
         private ExportSelection() {
-            this(new LinkedHashSet<>(), new LinkedHashMap<>());
+            this(new LinkedHashSet<>(), new LinkedHashMap<>(), new EmptySlotRelations());
+        }
+    }
+
+    /** 空槽专用的受限关系投影；boolean 数组只为流式 lambda 记录一次矛盾，不保存整表行。 */
+    private record EmptySlotRelations(
+            Set<UUID> emptySlotTaskIds, Set<UUID> emptySlotRunIds, boolean[] invalidRelationFound) {
+        private EmptySlotRelations() {
+            this(new LinkedHashSet<>(), new LinkedHashSet<>(), new boolean[] {false});
         }
     }
 

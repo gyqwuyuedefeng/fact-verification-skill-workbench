@@ -42,8 +42,26 @@ class DemoAdminPropertiesBindingTest {
                                     Path.of("skills/presets"),
                                     209_715_200L,
                                     2_000,
-                                    524_288_000L));
+                                    524_288_000L,
+                                    DemoAdminProperties.StorageSwapMode.MOVE));
                 });
+    }
+
+    /** test profile 必须通过显式属性选择 COPY_VERIFY，不允许根据 IOException 自动猜测交换策略。 */
+    @Test
+    void bindsExplicitCopyVerifyMode() {
+        new ApplicationContextRunner()
+                .withUserConfiguration(BindingConfiguration.class)
+                .withPropertyValues(
+                        "workbench.demo-admin.enabled=true",
+                        "workbench.demo-admin.demo-material-root=evals/demo-materials",
+                        "workbench.demo-admin.skill-preset-root=skills/presets",
+                        "workbench.demo-admin.max-archive-bytes=209715200",
+                        "workbench.demo-admin.max-entry-count=2000",
+                        "workbench.demo-admin.max-expanded-bytes=524288000",
+                        "workbench.demo-admin.storage-swap-mode=COPY_VERIFY")
+                .run(context -> assertThat(context.getBean(DemoAdminProperties.class).storageSwapMode())
+                        .isEqualTo(DemoAdminProperties.StorageSwapMode.COPY_VERIFY));
     }
 
     /** 只启用目标配置 Bean；隔离上下文不会扫描控制器、数据库或文件系统组件。 */

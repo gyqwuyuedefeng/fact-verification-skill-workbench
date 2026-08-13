@@ -41,6 +41,7 @@ workbench:
     max-archive-bytes: 209715200
     max-entry-count: 2000
     max-expanded-bytes: 524288000
+    storage-swap-mode: MOVE
   database:
     expected-name: kjjr_inx_brain
     expected-schema: test

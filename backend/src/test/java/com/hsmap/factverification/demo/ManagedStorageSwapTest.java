@@ -6,6 +6,7 @@ import com.hsmap.factverification.shared.ServiceException;
 import java.nio.file.Files;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
+import java.nio.file.FileStore;
 import java.util.LinkedHashMap;
 import java.util.Map;
 import java.util.UUID;
@@ -201,13 +202,15 @@ class ManagedStorageSwapTest {
             Files.createDirectories(runtimeFile.getParent());
             Files.writeString(runtimeFile, directory);
         }
+        FileStore sharedStore = org.mockito.Mockito.mock(FileStore.class);
         ManagedStorageSwap swap = new ManagedStorageSwap(
                 storageRoot,
                 (source, target) -> {
                     throw new java.nio.file.AtomicMoveNotSupportedException(
                             source.toString(), target.toString(), "模拟 DrvFS 不支持 ATOMIC_MOVE");
                 },
-                Files::move);
+                Files::move,
+                path -> sharedStore);
 
         ManagedStorageSwap.PreparedStorageSwap prepared = swap.prepare(UUID.randomUUID());
         swap.restore(prepared);
@@ -251,6 +254,260 @@ class ManagedStorageSwapTest {
                     .hasContent(directory);
         }
         assertDemoResetHasNoOperations();
+    }
+
+    /**
+     * 测试场景：ATOMIC_MOVE 不受支持且源、目标最近现存父目录位于不同 FileStore。
+     * 前置条件：可控 FileStore 解析器对 source 与 target parent 返回不同实例，并记录普通 move 调用数。
+     * 期望结果：失败关闭且不调用普通 move，三个原目录保持原字节。
+     * 断言重点：路径同属 storageRoot 不等于同一文件系统，跨 FileStore 不能使用非原子降级。
+     */
+    @Test
+    void refusesOrdinaryFallbackAcrossDifferentFileStores() throws Exception {
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            Path runtimeFile = storageRoot.resolve(directory).resolve("original.txt");
+            Files.createDirectories(runtimeFile.getParent());
+            Files.writeString(runtimeFile, directory);
+        }
+        FileStore sourceStore = org.mockito.Mockito.mock(FileStore.class);
+        FileStore targetStore = org.mockito.Mockito.mock(FileStore.class);
+        AtomicInteger ordinaryMoves = new AtomicInteger();
+        ManagedStorageSwap swap = new ManagedStorageSwap(
+                storageRoot,
+                (source, target) -> {
+                    throw new java.nio.file.AtomicMoveNotSupportedException(
+                            source.toString(), target.toString(), "模拟不支持原子移动");
+                },
+                (source, target) -> ordinaryMoves.incrementAndGet(),
+                path -> path.startsWith(storageRoot.resolve("uploads")) ? sourceStore : targetStore);
+
+        assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("暂存失败");
+        org.assertj.core.api.Assertions.assertThat(ordinaryMoves).hasValue(0);
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            org.assertj.core.api.Assertions.assertThat(storageRoot.resolve(directory).resolve("original.txt"))
+                    .hasContent(directory);
+        }
+    }
+
+    /**
+     * 测试场景：FileStore 查询本身失败。
+     * 前置条件：原子移动明确不支持，解析器在普通 move 前抛 IOException。
+     * 期望结果：普通 move 从未调用，正式目录保持原样。
+     * 断言重点：无法证明同一文件系统等价于不同 FileStore，必须失败关闭。
+     */
+    @Test
+    void refusesOrdinaryFallbackWhenFileStoreCannotBeRead() throws Exception {
+        Path original = storageRoot.resolve("uploads/original.txt");
+        Files.createDirectories(original.getParent());
+        Files.writeString(original, "original");
+        AtomicInteger ordinaryMoves = new AtomicInteger();
+        ManagedStorageSwap swap = new ManagedStorageSwap(
+                storageRoot,
+                (source, target) -> {
+                    throw new java.nio.file.AtomicMoveNotSupportedException(
+                            source.toString(), target.toString(), "模拟不支持原子移动");
+                },
+                (source, target) -> ordinaryMoves.incrementAndGet(),
+                path -> {
+                    throw new java.io.IOException("模拟 FileStore 查询失败");
+                });
+
+        assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("暂存失败");
+        org.assertj.core.api.Assertions.assertThat(ordinaryMoves).hasValue(0);
+        org.assertj.core.api.Assertions.assertThat(original).hasContent("original");
+    }
+
+    /** COPY_VERIFY 成功时必须支持缺失、仅 .gitkeep 与嵌套文件三种原形，并能逐字节恢复。 */
+    @Test
+    void copyVerifyPreservesMissingGitkeepAndNestedShapes() throws Exception {
+        Files.createDirectories(storageRoot.resolve("uploads/a/b"));
+        Files.writeString(storageRoot.resolve("uploads/a/b/material.txt"), "material");
+        Files.createDirectories(storageRoot.resolve("skill-snapshots"));
+        Files.writeString(storageRoot.resolve("skill-snapshots/.gitkeep"), "");
+        ManagedStorageSwap swap = copyVerify(storageRoot, ManagedStorageSwap.CopyVerifyFaults.NONE);
+
+        ManagedStorageSwap.PreparedStorageSwap prepared = swap.prepare(UUID.randomUUID());
+        org.assertj.core.api.Assertions.assertThat(swap.blankState().values()).containsOnly(true);
+        swap.restore(prepared);
+
+        org.assertj.core.api.Assertions.assertThat(storageRoot.resolve("uploads/a/b/material.txt"))
+                .hasContent("material");
+        org.assertj.core.api.Assertions.assertThat(storageRoot.resolve("skill-snapshots/.gitkeep"))
+                .isRegularFile();
+        org.assertj.core.api.Assertions.assertThat(storageRoot.resolve("skill-runtime")).doesNotExist();
+        assertDemoResetHasNoOperations();
+    }
+
+    /** 首文件、中途文件及跨目录复制失败时，正式源在全部备份验证前不得发生变化。 */
+    @Test
+    void copyVerifyLeavesFormalTreesUntouchedForCopyFailures() throws Exception {
+        for (int failure : java.util.List.of(1, 2, 4)) {
+            Path root = storageRoot.resolve("copy-failure-" + failure);
+            populateThreeNestedTrees(root);
+            AtomicInteger copies = new AtomicInteger();
+            ManagedStorageSwap swap = copyVerify(root, (point, source, target) -> {
+                if (point == ManagedStorageSwap.CopyVerifyPoint.BEFORE_COPY_FILE
+                        && copies.incrementAndGet() == failure) {
+                    throw new java.io.IOException("模拟复制失败");
+                }
+            });
+
+            assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessageContaining("暂存失败");
+            assertThreeNestedTrees(root);
+            assertDemoResetHasNoOperations(root);
+        }
+    }
+
+    /** 源在复制期变化，或备份被短写/篡改/增删条目时，必须在删除正式源前失败关闭。 */
+    @Test
+    void copyVerifyRejectsSourceChangeAndBackupManifestMismatch() throws Exception {
+        for (String scenario : java.util.List.of("source-change", "truncate", "extra", "missing")) {
+            Path root = storageRoot.resolve(scenario);
+            populateThreeNestedTrees(root);
+            AtomicInteger directories = new AtomicInteger();
+            AtomicInteger files = new AtomicInteger();
+            ManagedStorageSwap swap = copyVerify(root, (point, source, target) -> {
+                if (scenario.equals("source-change")
+                        && point == ManagedStorageSwap.CopyVerifyPoint.AFTER_BACKUP_DIRECTORY
+                        && directories.incrementAndGet() == 1) {
+                    Files.writeString(source.resolve("changed.txt"), "changed");
+                }
+                if (point == ManagedStorageSwap.CopyVerifyPoint.AFTER_COPY_FILE
+                        && files.incrementAndGet() == 1) {
+                    if (scenario.equals("truncate")) Files.writeString(target, "x");
+                    if (scenario.equals("extra")) Files.writeString(target.getParent().resolve("extra.txt"), "x");
+                    if (scenario.equals("missing")) Files.delete(target);
+                }
+            });
+
+            assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessageContaining("暂存失败");
+            org.assertj.core.api.Assertions.assertThat(root.resolve("uploads/child/file-1.txt"))
+                    .hasContent("uploads-1");
+        }
+    }
+
+    /** 首次/中途删除与建空失败必须从已验证备份恢复三目录原字节，并清理 operation。 */
+    @Test
+    void copyVerifyCompensatesDeleteAndCreateEmptyFailures() throws Exception {
+        for (ManagedStorageSwap.CopyVerifyPoint failedPoint : java.util.List.of(
+                ManagedStorageSwap.CopyVerifyPoint.BEFORE_DELETE_FORMAL,
+                ManagedStorageSwap.CopyVerifyPoint.AFTER_DELETE_FORMAL,
+                ManagedStorageSwap.CopyVerifyPoint.BEFORE_CREATE_EMPTY)) {
+            Path root = storageRoot.resolve(failedPoint.name());
+            populateThreeNestedTrees(root);
+            AtomicInteger hits = new AtomicInteger();
+            ManagedStorageSwap swap = copyVerify(root, (point, source, target) -> {
+                if (point == failedPoint && hits.incrementAndGet() == 2) {
+                    throw new java.io.IOException("模拟正式目录切换失败");
+                }
+            });
+
+            assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessageContaining("暂存失败");
+            assertThreeNestedTrees(root);
+            assertDemoResetHasNoOperations(root);
+        }
+    }
+
+    /** 补偿本身失败时必须保留已验证 operation，且新异常带原切换异常为 suppressed。 */
+    @Test
+    void copyVerifyRetainsOperationWhenCompensationFails() throws Exception {
+        populateThreeNestedTrees(storageRoot);
+        ManagedStorageSwap swap = copyVerify(storageRoot, (point, source, target) -> {
+            if (point == ManagedStorageSwap.CopyVerifyPoint.AFTER_DELETE_FORMAL
+                    || point == ManagedStorageSwap.CopyVerifyPoint.BEFORE_RESTORE) {
+                throw new java.io.IOException("模拟切换及补偿失败");
+            }
+        });
+
+        assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("恢复失败")
+                .satisfies(exception -> org.assertj.core.api.Assertions.assertThat(exception.getSuppressed())
+                        .isNotEmpty());
+        try (var operations = Files.list(storageRoot.resolve(".demo-reset"))) {
+            org.assertj.core.api.Assertions.assertThat(operations.toList()).hasSize(1);
+        }
+    }
+
+    /** import 的 staged 含链接或正式复制后被篡改时必须拒绝，并可由同一 prepared 恢复原空白形态。 */
+    @Test
+    void copyVerifyRejectsUnsafeOrCorruptedImportAndRestoresBlankShape() throws Exception {
+        for (String scenario : java.util.List.of("symlink", "corrupt")) {
+            Path root = storageRoot.resolve("import-" + scenario);
+            Files.createDirectories(root.resolve("uploads"));
+            Files.writeString(root.resolve("uploads/.gitkeep"), "");
+            java.util.concurrent.atomic.AtomicBoolean corrupted = new java.util.concurrent.atomic.AtomicBoolean();
+            ManagedStorageSwap swap = copyVerify(root, (point, source, target) -> {
+                if (scenario.equals("corrupt")
+                        && point == ManagedStorageSwap.CopyVerifyPoint.AFTER_FORMAL_COPY_FILE
+                        && corrupted.compareAndSet(false, true)) {
+                    Files.writeString(target, "corrupt");
+                }
+            });
+            ManagedStorageSwap.PreparedStorageSwap prepared = swap.prepare(UUID.randomUUID());
+            Map<String, Path> staged = stagedTrees(root);
+            if (scenario.equals("symlink")) {
+                try {
+                    Files.createSymbolicLink(staged.get("uploads").resolve("link"), Path.of("outside"));
+                } catch (UnsupportedOperationException | java.io.IOException exception) {
+                    Assumptions.abort("当前文件系统不支持符号链接测试");
+                }
+            }
+
+            assertThatThrownBy(() -> swap.replaceWith(prepared, staged))
+                    .isInstanceOf(ServiceException.class);
+            swap.restore(prepared);
+            org.assertj.core.api.Assertions.assertThat(root.resolve("uploads/.gitkeep"))
+                    .isRegularFile();
+            org.assertj.core.api.Assertions.assertThat(root.resolve("skill-snapshots")).doesNotExist();
+        }
+    }
+
+    /** 构造显式 COPY_VERIFY，测试不依赖 IOException 自动选择模式。 */
+    private static ManagedStorageSwap copyVerify(Path root, ManagedStorageSwap.CopyVerifyFaults faults) {
+        return new ManagedStorageSwap(
+                root, DemoAdminProperties.StorageSwapMode.COPY_VERIFY, 2_000, 500L * 1024 * 1024, faults);
+    }
+
+    /** 三目录各含两个文件并至少一层子目录，确保覆盖 DrvFS 不能 rename 的真实形态。 */
+    private static void populateThreeNestedTrees(Path root) throws Exception {
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            Files.createDirectories(root.resolve(directory).resolve("child"));
+            Files.writeString(root.resolve(directory).resolve("child/file-1.txt"), directory + "-1");
+            Files.writeString(root.resolve(directory).resolve("child/file-2.txt"), directory + "-2");
+        }
+    }
+
+    /** 断言失败补偿后所有代表文件逐字节恢复。 */
+    private static void assertThreeNestedTrees(Path root) {
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            org.assertj.core.api.Assertions.assertThat(root.resolve(directory).resolve("child/file-1.txt"))
+                    .hasContent(directory + "-1");
+            org.assertj.core.api.Assertions.assertThat(root.resolve(directory).resolve("child/file-2.txt"))
+                    .hasContent(directory + "-2");
+        }
+    }
+
+    /** 构造三个已校验 staged 目录，内容含嵌套文件。 */
+    private static Map<String, Path> stagedTrees(Path root) throws Exception {
+        Map<String, Path> result = new LinkedHashMap<>();
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            Path staged = root.resolve("staged").resolve(directory);
+            Files.createDirectories(staged.resolve("child"));
+            Files.writeString(staged.resolve("child/file.txt"), directory);
+            result.put(directory, staged);
+        }
+        return result;
     }
 
     /** 当前测试根下不得残留任何一次失败操作目录。 */

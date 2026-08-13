@@ -499,10 +499,18 @@ class SnapshotArchiveServiceTest {
         invalidRows.add(exact.deepCopy().put("media_type", "text/plain"));
         invalidRows.add(exact.deepCopy().put("file_size", 2));
         invalidRows.add(exact.deepCopy().put("file_hash", "1".repeat(64)));
+        invalidRows.add(exact.deepCopy().put("input_type", "TEXT"));
+        invalidRows.add(exact.deepCopy().put("user_message", "尚未上传但已有消息"));
+        invalidRows.add(exact.deepCopy().put("shadow_requested", true));
+        invalidRows.add(exact.deepCopy().put("error_code", "HISTORICAL_ERROR"));
+        invalidRows.add(exact.deepCopy().put("error_summary", "历史错误"));
         invalidRows.add(exact.deepCopy().put("parser_version", "parser-v1"));
         invalidRows.add(exact.deepCopy().put("document_snapshot", "not-null"));
         invalidRows.add(exact.deepCopy().put("document_snapshot_hash", "2".repeat(64)));
         invalidRows.add(exact.deepCopy().put("evidence_snapshot_id", UUID.randomUUID().toString()));
+        invalidRows.add(exact.deepCopy().put("updated_at", "2026-08-13T00:00:01Z"));
+        invalidRows.add(exact.deepCopy().put("id", taskId.toString().toUpperCase(java.util.Locale.ROOT)));
+        invalidRows.add(exact.deepCopy().put("id", "not-a-uuid"));
         invalidRows.add(exact.deepCopy().put(
                 "upload_path",
                 temporaryRoot.resolve("storage/uploads/" + taskId + "/other-name").toString()));
@@ -515,6 +523,52 @@ class SnapshotArchiveServiceTest {
                     .as("近似空槽必须拒绝：%s", invalid)
                     .isInstanceOf(ServiceException.class)
                     .hasMessageContaining("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID");
+        }
+    }
+
+    /**
+     * 测试场景：恶意归档把精确空上传槽同时关联到 run、claim 或 TASK evidence。
+     * 前置条件：七表 JSONL 与 manifest 摘要都合法，placeholder 本身没有实体文件。
+     * 期望结果：导入在任何数据库插入前以稳定业务错误拒绝三种跨表矛盾。
+     * 断言重点：空槽例外必须解释完整七表状态，不能等数据库外键或后续业务流程偶然失败。
+     */
+    @Test
+    void rejectsPlaceholderWithRunClaimOrTaskEvidenceBeforeDatabaseImport() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        UUID runId = UUID.randomUUID();
+        ObjectNode task = emptyUploadSlotRow(taskId, Path.of("uploads/" + taskId + "/pending-upload"));
+        ObjectNode run = OBJECT_MAPPER.createObjectNode()
+                .put("id", runId.toString())
+                .put("task_id", taskId.toString());
+        ObjectNode claim = OBJECT_MAPPER.createObjectNode()
+                .put("id", UUID.randomUUID().toString())
+                .put("run_id", runId.toString());
+        ObjectNode evidence = OBJECT_MAPPER.createObjectNode()
+                .put("id", UUID.randomUUID().toString())
+                .put("owner_type", "TASK")
+                .put("owner_id", taskId.toString());
+
+        for (Map<SnapshotTable, List<ObjectNode>> malicious : List.of(
+                Map.of(SnapshotTable.VERIFICATION_RUN, List.of(run)),
+                Map.of(SnapshotTable.VERIFICATION_RUN, List.of(run), SnapshotTable.CLAIM, List.of(claim)),
+                Map.of(SnapshotTable.EVIDENCE_SNAPSHOT, List.of(evidence)))) {
+            Map<String, byte[]> entries = validArchiveEntries(SnapshotManifest.FORMAT_VERSION);
+            replaceTableRows(entries, SnapshotTable.VERIFICATION_TASK, List.of(task));
+            malicious.forEach((table, rows) -> {
+                try {
+                    replaceTableRows(entries, table, rows);
+                } catch (Exception exception) {
+                    throw new AssertionError(exception);
+                }
+            });
+            DemoStateRepository repository = mock(DemoStateRepository.class);
+
+            assertThatThrownBy(() -> archive(repository, mock(DemoStateService.class))
+                            .importFrom(new ByteArrayInputStream(zipBytes(entries)), "导入快照"))
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessageContaining("DEMO_SNAPSHOT_EMPTY_SLOT_RELATION_INVALID");
+            verify(repository, never())
+                    .insertRow(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.anyString());
         }
     }
 
@@ -544,6 +598,38 @@ class SnapshotArchiveServiceTest {
                         .importFrom(new ByteArrayInputStream(zipBytes(entries)), "导入快照"))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID");
+    }
+
+    /**
+     * 测试场景：导入端收到只近似匹配 create 签名且没有实体文件的任务。
+     * 前置条件：逐项改变 input/user/shadow/error/时间/UUID，ZIP 与 manifest 本身完整合法。
+     * 期望结果：每个近似行都由导入预检稳定拒绝。
+     * 断言重点：导入不能信任导出来源，必须独立执行与导出相同的完整签名判断。
+     */
+    @Test
+    void rejectsEveryNearMissOfEmptySlotSignatureDuringImport() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        ObjectNode exact = emptyUploadSlotRow(taskId, Path.of("uploads/" + taskId + "/pending-upload"));
+        List<ObjectNode> invalidRows = List.of(
+                exact.deepCopy().put("input_type", "TEXT"),
+                exact.deepCopy().put("user_message", "message"),
+                exact.deepCopy().put("shadow_requested", true),
+                exact.deepCopy().put("error_code", "ERROR"),
+                exact.deepCopy().put("error_summary", "error"),
+                exact.deepCopy().put("updated_at", "2026-08-13T00:00:01Z"),
+                exact.deepCopy().put("id", taskId.toString().toUpperCase(java.util.Locale.ROOT)),
+                exact.deepCopy().put("id", "not-a-uuid"));
+
+        for (ObjectNode invalid : invalidRows) {
+            Map<String, byte[]> entries = validArchiveEntries(SnapshotManifest.FORMAT_VERSION);
+            replaceTableRows(entries, SnapshotTable.VERIFICATION_TASK, List.of(invalid));
+
+            assertThatThrownBy(() -> archive(mock(DemoStateRepository.class), mock(DemoStateService.class))
+                            .importFrom(new ByteArrayInputStream(zipBytes(entries)), "导入快照"))
+                    .as("导入近似空槽必须拒绝：%s", invalid)
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessageContaining("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID");
+        }
     }
 
     /**
@@ -842,12 +928,37 @@ class SnapshotArchiveServiceTest {
         row.put("file_size", 1);
         row.put("file_hash", "0".repeat(64));
         row.put("upload_path", uploadPath.toString());
+        row.put("input_type", "FILE");
+        row.putNull("user_message");
         row.putNull("parser_version");
         row.putNull("document_snapshot");
         row.putNull("document_snapshot_hash");
         row.putNull("evidence_snapshot_id");
         row.put("status", "UPLOADED");
+        row.put("shadow_requested", false);
+        row.putNull("error_code");
+        row.putNull("error_summary");
+        row.put("created_at", "2026-08-13T00:00:00Z");
+        row.put("updated_at", "2026-08-13T00:00:00Z");
         return row;
+    }
+
+    /** 用给定 object 行替换单张表，并同步 manifest 行数与 SHA，构造语法完整但业务矛盾的归档。 */
+    private static void replaceTableRows(
+            Map<String, byte[]> entries, SnapshotTable table, List<ObjectNode> rows) throws Exception {
+        StringBuilder jsonl = new StringBuilder();
+        for (ObjectNode row : rows) {
+            jsonl.append(OBJECT_MAPPER.writeValueAsString(row)).append('\n');
+        }
+        byte[] content = jsonl.toString().getBytes(StandardCharsets.UTF_8);
+        entries.put("tables/" + table.tableName() + ".jsonl", content);
+        SnapshotManifest current = OBJECT_MAPPER.readValue(entries.get("manifest.json"), SnapshotManifest.class);
+        Map<String, SnapshotManifest.TableEntry> tables = new LinkedHashMap<>(current.tables());
+        tables.put(table.tableName(), new SnapshotManifest.TableEntry(rows.size(), sha256(content)));
+        entries.put(
+                "manifest.json",
+                OBJECT_MAPPER.writeValueAsBytes(
+                        new SnapshotManifest(current.formatVersion(), current.createdAt(), tables, current.files())));
     }
 
     /** 构造七张空表的合法 v1 归档，供单点破坏测试复用。 */

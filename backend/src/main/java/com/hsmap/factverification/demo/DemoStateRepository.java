@@ -146,7 +146,7 @@ public class DemoStateRepository {
                        and r.run_type = 'PRIMARY'
                        and r.status = 'PENDING'
                        and r.started_at is null
-                       and r.created_at <= CURRENT_TIMESTAMP - interval '1 hour'
+                       and r.created_at < CURRENT_TIMESTAMP - interval '1 hour'
                        and not exists (
                            select 1
                              from test.verification_run other

@@ -189,7 +189,7 @@ class SnapshotRoundTripTest {
                 new InMemorySnapshotRepository(new EnumMap<>(SnapshotTable.class));
         failingRepository.failAt(SnapshotTable.CLAIM);
 
-        assertThatThrownBy(() -> archive(failingRepository, targetStorage)
+        assertThatThrownBy(() -> archiveCopyVerify(failingRepository, targetStorage)
                         .importFrom(new ByteArrayInputStream(zip.toByteArray()), "导入快照"))
                 .isInstanceOf(IllegalStateException.class)
                 .hasMessageContaining("模拟数据库故障");
@@ -370,6 +370,44 @@ class SnapshotRoundTripTest {
                 new DemoOperationCoordinator());
     }
 
+    /** 显式 COPY_VERIFY 的导入服务，证明数据库事务失败走复制备份恢复而非 MOVE。 */
+    private SnapshotArchiveService archiveCopyVerify(DemoStateRepository repository, Path storageRoot) {
+        RecordingTransactionManager transactions = repository instanceof InMemorySnapshotRepository memory
+                ? new RecordingTransactionManager(memory::rollbackImportedRows)
+                : new RecordingTransactionManager();
+        DemoOperationCoordinator coordinator = new DemoOperationCoordinator();
+        WorkbenchProperties properties = new WorkbenchProperties(
+                new WorkbenchProperties.DatabaseBoundary("demo", "test", false),
+                storageRoot,
+                temporaryRoot.resolve("manifest.json"),
+                temporaryRoot.resolve("skill-source"),
+                new WorkbenchProperties.Model("", "", "", ""),
+                URI.create("http://127.0.0.1"));
+        DemoAdminProperties adminProperties = new DemoAdminProperties(
+                true,
+                temporaryRoot.resolve("demo-materials"),
+                temporaryRoot.resolve("presets"),
+                200L * 1024 * 1024,
+                2_000,
+                500L * 1024 * 1024,
+                DemoAdminProperties.StorageSwapMode.COPY_VERIFY);
+        ManagedStorageSwap swap = new ManagedStorageSwap(
+                storageRoot,
+                DemoAdminProperties.StorageSwapMode.COPY_VERIFY,
+                2_000,
+                500L * 1024 * 1024,
+                ManagedStorageSwap.CopyVerifyFaults.NONE);
+        return new SnapshotArchiveService(
+                repository,
+                mock(DemoStateService.class),
+                properties,
+                adminProperties,
+                OBJECT_MAPPER,
+                transactions,
+                coordinator,
+                swap);
+    }
+
     /** 显式共享状态门禁、事务替身和单用途协调器，供并发边界测试使用。 */
     private SnapshotArchiveService archive(
             DemoStateRepository repository,
@@ -449,6 +487,8 @@ class SnapshotRoundTripTest {
         row.put("file_size", 1);
         row.put("file_hash", "0".repeat(64));
         row.put("upload_path", uploadPath.toAbsolutePath().normalize().toString());
+        row.put("input_type", "FILE");
+        row.putNull("user_message");
         row.putNull("parser_version");
         row.putNull("document_snapshot");
         row.putNull("document_snapshot_hash");
