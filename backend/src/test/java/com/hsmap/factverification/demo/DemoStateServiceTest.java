@@ -333,6 +333,74 @@ class DemoStateServiceTest {
         order.verify(repository).clearAll();
     }
 
+    /**
+     * 测试场景：调用方未提交恢复端点唯一允许的精确确认短语。
+     * 前置条件：仓储中可能存在遗留运行，但服务尚未进入共享管理写锁。
+     * 期望结果：返回确认错误，既不锁表也不执行恢复 SQL。
+     * 断言重点：错误短语必须在任何数据库加锁或写入之前被拒绝。
+     */
+    @Test
+    void rejectsStaleRecoveryBeforeLockingWhenConfirmationIsInvalid() {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        DemoStateService service = service(repository, new RecordingTransactionManager());
+
+        assertThatThrownBy(() -> service.recoverStale("错误确认语"))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("DEMO_STALE_RECOVERY_CONFIRMATION_INVALID");
+
+        verify(repository, never()).lockAllTablesForStateReplacement();
+        verify(repository, never()).recoverStalePendingPrimaryRuns();
+    }
+
+    /**
+     * 测试场景：固定 SQL 恢复一条超时且尚未启动的 PRIMARY 运行及其对应任务。
+     * 前置条件：仓储返回任务、运行各一条，状态查询提供脱敏七表和目录投影。
+     * 期望结果：服务在 REQUIRES_NEW 中先锁七表再恢复，并返回数量与最新状态。
+     * 断言重点：恢复与 reset 共用管理写锁边界，事务提交后才对外返回成功。
+     */
+    @Test
+    void recoversMatchingStaleTaskAndRunInsideDedicatedTransaction() {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        when(repository.recoverStalePendingPrimaryRuns())
+                .thenReturn(new DemoStateRepository.StaleRecoveryCounts(1, 1));
+        when(repository.counts()).thenReturn(zeroCounts());
+        RecordingTransactionManager transactionManager = new RecordingTransactionManager();
+        DemoStateService service = service(repository, transactionManager);
+
+        StaleRecoveryView result = service.recoverStale("回收遗留任务");
+
+        assertThat(result.recoveredTasks()).isEqualTo(1);
+        assertThat(result.recoveredRuns()).isEqualTo(1);
+        assertThat(result.status().tableCounts()).isEqualTo(zeroCounts());
+        assertThat(transactionManager.propagations()).containsExactly(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        assertThat(transactionManager.commits()).isEqualTo(1);
+        InOrder order = org.mockito.Mockito.inOrder(repository);
+        order.verify(repository).lockAllTablesForStateReplacement();
+        order.verify(repository).recoverStalePendingPrimaryRuns();
+    }
+
+    /**
+     * 测试场景：数据库实际恢复的任务数与运行数不一致。
+     * 前置条件：仓储在同一 SQL 中报告一条运行已更新、零条任务已更新。
+     * 期望结果：服务抛出业务异常并回滚专用事务，不能提交半恢复状态。
+     * 断言重点：数量一致性由服务在事务提交前检查，异常必须触发一次 rollback。
+     */
+    @Test
+    void rollsBackWhenRecoveredTaskAndRunCountsDiffer() {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        when(repository.recoverStalePendingPrimaryRuns())
+                .thenReturn(new DemoStateRepository.StaleRecoveryCounts(0, 1));
+        RecordingTransactionManager transactionManager = new RecordingTransactionManager();
+        DemoStateService service = service(repository, transactionManager);
+
+        assertThatThrownBy(() -> service.recoverStale("回收遗留任务"))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("DEMO_STALE_RECOVERY_COUNT_MISMATCH");
+
+        assertThat(transactionManager.commits()).isZero();
+        assertThat(transactionManager.rollbacks()).isEqualTo(1);
+    }
+
     /** 建立服务实例；目录交换使用真实实现，事务管理器记录独立提交行为而不连接数据库。 */
     private DemoStateService service(DemoStateRepository repository, RecordingTransactionManager transactionManager) {
         return new DemoStateService(repository, new ManagedStorageSwap(storageRoot), transactionManager);

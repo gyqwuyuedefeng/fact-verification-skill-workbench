@@ -396,9 +396,17 @@ public class SnapshotArchiveService {
         try {
             ObjectNode row = requireObjectRow(json);
             String taskId = requiredText(row, "id");
-            Path upload =
-                    Path.of(requiredText(row, "upload_path")).toAbsolutePath().normalize();
+            Path upload = Path.of(requiredText(row, "upload_path")).toAbsolutePath().normalize();
             Path uploadsRoot = requireWithinStorageRoot(storageRoot.resolve("uploads"));
+            Path expectedPlaceholder = uploadsRoot.resolve(taskId).resolve("pending-upload").normalize();
+            if (isExactEmptyUploadSlot(row) && upload.equals(expectedPlaceholder)) {
+                // create 只落库、不落空文件；若磁盘反而已有同名对象，就不再属于精确空槽，必须失败关闭。
+                if (Files.exists(upload, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new ServiceException("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID", "空上传槽不应包含占位文件");
+                }
+                row.put("upload_path", "uploads/" + taskId + "/pending-upload");
+                return writeJson(row);
+            }
             if (!upload.startsWith(uploadsRoot)
                     || Files.isSymbolicLink(upload)
                     || !Files.isRegularFile(upload, LinkOption.NOFOLLOW_LINKS)) {
@@ -921,13 +929,46 @@ public class SnapshotArchiveService {
         Path stagedUpload = requireWithinOperation(
                 staged.expandedRoot(),
                 staged.expandedRoot().resolve(FILES_ROOT).resolve(relative).normalize());
-        if (!Files.isRegularFile(stagedUpload, LinkOption.NOFOLLOW_LINKS)) {
+        boolean exactEmptySlot = isExactEmptyUploadSlot(row)
+                && relative.equals(Path.of("uploads", taskId, "pending-upload"));
+        if (exactEmptySlot && Files.exists(stagedUpload, LinkOption.NOFOLLOW_LINKS)) {
+            throw new ServiceException("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID", "空上传槽不应包含占位文件");
+        }
+        if (!exactEmptySlot && !Files.isRegularFile(stagedUpload, LinkOption.NOFOLLOW_LINKS)) {
             throw new ServiceException("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID", "任务上传文件未包含在快照文件清单中");
         }
         Path currentUpload =
                 requireWithinStorageRoot(storageRoot.resolve(relative).normalize());
         row.put("upload_path", currentUpload.toString());
         return writeJson(row);
+    }
+
+    /**
+     * 逐字段识别 VerificationTaskService.create 尚未收到首次材料时写入的唯一空上传槽签名。
+     *
+     * <p>这不是“附件缺失可忽略”：状态、占位元数据及四个解析/证据字段必须全部精确匹配，路径还会由导出/导入调用点分别校验为
+     * uploads/{taskId}/pending-upload；任何近似状态继续走真实文件存在性门禁。
+     */
+    private static boolean isExactEmptyUploadSlot(ObjectNode row) {
+        return row.path("status").isTextual()
+                && "UPLOADED".equals(row.path("status").textValue())
+                && row.path("original_file_name").isTextual()
+                && "pending-upload".equals(row.path("original_file_name").textValue())
+                && row.path("media_type").isTextual()
+                && "application/octet-stream".equals(row.path("media_type").textValue())
+                && row.path("file_size").isIntegralNumber()
+                && row.path("file_size").longValue() == 1L
+                && row.path("file_hash").isTextual()
+                && "0".repeat(64).equals(row.path("file_hash").textValue())
+                && isExplicitNull(row, "parser_version")
+                && isExplicitNull(row, "document_snapshot")
+                && isExplicitNull(row, "document_snapshot_hash")
+                && isExplicitNull(row, "evidence_snapshot_id");
+    }
+
+    /** 空槽签名要求字段真实存在且为 JSON null，缺字段不能被 path().isMissingNode() 冒充。 */
+    private static boolean isExplicitNull(ObjectNode row, String field) {
+        return row.has(field) && row.get(field).isNull();
     }
 
     /** 按行读取已校验 JSONL；校验和导入使用同一暂存文件，不接受第二个输入来源。 */

@@ -7,6 +7,7 @@ import static org.mockito.Mockito.never;
 import static org.mockito.Mockito.verify;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.hsmap.factverification.config.WorkbenchProperties;
 import com.hsmap.factverification.shared.ServiceException;
 import java.io.ByteArrayInputStream;
@@ -480,6 +481,72 @@ class SnapshotArchiveServiceTest {
     }
 
     /**
+     * 测试场景：缺失附件的任务仅部分匹配 create 的空上传槽签名。
+     * 前置条件：分别改变状态、文件名、媒体类型、大小、哈希、解析字段或固定路径；磁盘均没有对应文件。
+     * 期望结果：每一种近似值都稳定拒绝，不能把一般附件丢失泛化为可导出状态。
+     * 断言重点：只有全部字段和 uploads/{taskId}/pending-upload 路径同时精确匹配才允许无文件。
+     */
+    @Test
+    void rejectsMissingUploadForEveryNearMissOfExactEmptySlotSignature() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        Path exactPath = temporaryRoot.resolve("storage/uploads/" + taskId + "/pending-upload");
+        ObjectNode exact = emptyUploadSlotRow(taskId, exactPath);
+        List<ObjectNode> invalidRows = new ArrayList<>();
+        for (String status : List.of("PARSING", "READY", "RUNNING", "COMPLETED", "PARTIAL", "FAILED")) {
+            invalidRows.add(exact.deepCopy().put("status", status));
+        }
+        invalidRows.add(exact.deepCopy().put("original_file_name", "material.pdf"));
+        invalidRows.add(exact.deepCopy().put("media_type", "text/plain"));
+        invalidRows.add(exact.deepCopy().put("file_size", 2));
+        invalidRows.add(exact.deepCopy().put("file_hash", "1".repeat(64)));
+        invalidRows.add(exact.deepCopy().put("parser_version", "parser-v1"));
+        invalidRows.add(exact.deepCopy().put("document_snapshot", "not-null"));
+        invalidRows.add(exact.deepCopy().put("document_snapshot_hash", "2".repeat(64)));
+        invalidRows.add(exact.deepCopy().put("evidence_snapshot_id", UUID.randomUUID().toString()));
+        invalidRows.add(exact.deepCopy().put(
+                "upload_path",
+                temporaryRoot.resolve("storage/uploads/" + taskId + "/other-name").toString()));
+
+        for (ObjectNode invalid : invalidRows) {
+            assertThatThrownBy(() -> archive(
+                                    repositoryWithSingleTaskRow(OBJECT_MAPPER.writeValueAsString(invalid)),
+                                    mock(DemoStateService.class))
+                            .exportTo(new ByteArrayOutputStream()))
+                    .as("近似空槽必须拒绝：%s", invalid)
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessageContaining("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID");
+        }
+    }
+
+    /**
+     * 测试场景：外部 ZIP 省略普通 READY 任务所声明的材料文件。
+     * 前置条件：归档 v1、七表摘要和任务路径都合法，只有 files 清单不存在该附件。
+     * 期望结果：导入仍以固定 upload path 错误拒绝，空槽例外不能扩散到其他状态。
+     * 断言重点：导入端必须独立重验精确签名，不能信任导出端或 manifest 没有列出文件。
+     */
+    @Test
+    void rejectsImportWithoutFileForNonPlaceholderTask() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        ObjectNode row = emptyUploadSlotRow(taskId, Path.of("uploads/" + taskId + "/pending-upload"));
+        row.put("status", "READY");
+        Map<String, byte[]> entries = validArchiveEntries(SnapshotManifest.FORMAT_VERSION);
+        byte[] taskJsonl = (OBJECT_MAPPER.writeValueAsString(row) + "\n").getBytes(StandardCharsets.UTF_8);
+        SnapshotManifest base = OBJECT_MAPPER.readValue(entries.get("manifest.json"), SnapshotManifest.class);
+        Map<String, SnapshotManifest.TableEntry> tables = new LinkedHashMap<>(base.tables());
+        tables.put("verification_task", new SnapshotManifest.TableEntry(1, sha256(taskJsonl)));
+        entries.put("tables/verification_task.jsonl", taskJsonl);
+        entries.put(
+                "manifest.json",
+                OBJECT_MAPPER.writeValueAsBytes(
+                        new SnapshotManifest(base.formatVersion(), base.createdAt(), tables, base.files())));
+
+        assertThatThrownBy(() -> archive(mock(DemoStateRepository.class), mock(DemoStateService.class))
+                        .importFrom(new ByteArrayInputStream(zipBytes(entries)), "导入快照"))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID");
+    }
+
+    /**
      * 测试场景：数据库快照声明 CANDIDATE Skill，但冻结快照或运行目录缺失。
      * 前置条件：Skill JSONL 含有真实 id 和冻结状态，其他六表为空。
      * 期望结果：导出失败关闭，不产生缺失 Skill 物理状态的快照。
@@ -747,6 +814,40 @@ class SnapshotArchiveServiceTest {
                 .when(repository)
                 .exportRows(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
         return repository;
+    }
+
+    /** 构造只有一条 verification_task JSON 行的仓储，专用于导出文件选择边界。 */
+    private static DemoStateRepository repositoryWithSingleTaskRow(String row) throws Exception {
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    SnapshotTable table = invocation.getArgument(0);
+                    DemoStateRepository.JsonRowConsumer consumer = invocation.getArgument(1);
+                    if (table == SnapshotTable.VERIFICATION_TASK) {
+                        consumer.accept(row);
+                    }
+                    return null;
+                })
+                .when(repository)
+                .exportRows(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        return repository;
+    }
+
+    /** 生成逐字段等于 VerificationTaskService.create 的合法空上传槽 JSON 节点。 */
+    private static ObjectNode emptyUploadSlotRow(UUID taskId, Path uploadPath) {
+        ObjectNode row = OBJECT_MAPPER.createObjectNode();
+        row.put("id", taskId.toString());
+        row.put("request_id", "empty-slot-request");
+        row.put("original_file_name", "pending-upload");
+        row.put("media_type", "application/octet-stream");
+        row.put("file_size", 1);
+        row.put("file_hash", "0".repeat(64));
+        row.put("upload_path", uploadPath.toString());
+        row.putNull("parser_version");
+        row.putNull("document_snapshot");
+        row.putNull("document_snapshot_hash");
+        row.putNull("evidence_snapshot_id");
+        row.put("status", "UPLOADED");
+        return row;
     }
 
     /** 构造七张空表的合法 v1 归档，供单点破坏测试复用。 */

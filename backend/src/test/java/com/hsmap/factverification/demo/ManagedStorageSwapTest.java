@@ -104,8 +104,7 @@ class ManagedStorageSwapTest {
         ManagedStorageSwap swap = new ManagedStorageSwap(storageRoot, (source, target) -> {
             int attempt = moves.incrementAndGet();
             if (attempt == 5) {
-                throw new java.nio.file.AtomicMoveNotSupportedException(
-                        source.toString(), target.toString(), "模拟失败");
+                throw new java.io.IOException("模拟非兼容性目录安装失败");
             }
             Files.move(source, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
         });
@@ -124,5 +123,149 @@ class ManagedStorageSwapTest {
                 .doesNotExist();
         org.assertj.core.api.Assertions.assertThat(storageRoot.resolve("skill-runtime/.gitkeep"))
                 .isRegularFile();
+    }
+
+    /**
+     * 测试场景：当前文件系统在第一个受管目录移动时就不支持 ATOMIC_MOVE。
+     * 前置条件：三个原目录都含真实运行文件，移动替身在改变任何路径前抛出 AtomicMoveNotSupportedException。
+     * 期望结果：prepare 失败但三个从未移动的原目录和文件全部保留。
+     * 断言重点：补偿只能删除本次确实已移到 archive 的目标；空 movedDirectories 绝不能演变为清空全部原目录。
+     */
+    @Test
+    void doesNotDeleteUntouchedDirectoriesWhenFirstAtomicMoveFails() throws Exception {
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            Path runtimeFile = storageRoot.resolve(directory).resolve("original.txt");
+            Files.createDirectories(runtimeFile.getParent());
+            Files.writeString(runtimeFile, directory);
+        }
+        ManagedStorageSwap swap = new ManagedStorageSwap(storageRoot, (source, target) -> {
+            throw new java.io.IOException("模拟第一次移动在改变路径前失败");
+        });
+
+        assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("暂存失败");
+
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            org.assertj.core.api.Assertions.assertThat(storageRoot.resolve(directory).resolve("original.txt"))
+                    .hasContent(directory);
+        }
+        assertDemoResetHasNoOperations();
+    }
+
+    /**
+     * 测试场景：第二或第三个目录在实际移动前发生普通 IOException。
+     * 前置条件：失败前的目录已真实移入 archive，失败目录及后续目录从未移动且内容各不相同。
+     * 期望结果：只恢复成功记录的目录，所有目录字节与形态不变，且不遗留 .demo-reset operation。
+     * 断言重点：补偿不能删除未出现在 movedDirectories 中的正式目标。
+     */
+    @Test
+    void restoresOnlyMovedDirectoriesWhenLaterMoveFails() throws Exception {
+        for (int failureAttempt : java.util.List.of(2, 3)) {
+            Path scenarioRoot = storageRoot.resolve("failure-" + failureAttempt);
+            for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+                Path runtimeFile = scenarioRoot.resolve(directory).resolve("original.txt");
+                Files.createDirectories(runtimeFile.getParent());
+                Files.writeString(runtimeFile, directory + "-" + failureAttempt);
+            }
+            AtomicInteger moves = new AtomicInteger();
+            ManagedStorageSwap swap = new ManagedStorageSwap(scenarioRoot, (source, target) -> {
+                if (moves.incrementAndGet() == failureAttempt) {
+                    throw new java.io.IOException("模拟后续目录普通移动失败");
+                }
+                Files.move(source, target, java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+            });
+
+            assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessageContaining("暂存失败");
+
+            for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+                org.assertj.core.api.Assertions.assertThat(scenarioRoot.resolve(directory).resolve("original.txt"))
+                        .hasContent(directory + "-" + failureAttempt);
+            }
+            assertDemoResetHasNoOperations(scenarioRoot);
+        }
+    }
+
+    /**
+     * 测试场景：文件系统明确报告不支持 ATOMIC_MOVE，但同一 storageRoot 内普通无覆盖 move 可用。
+     * 前置条件：原子移动替身始终抛 AtomicMoveNotSupportedException，普通移动替身调用不带 REPLACE 的 Files.move。
+     * 期望结果：prepare 可完成并由 restore 完整恢复三个目录，不留下 operation。
+     * 断言重点：降级只针对明确的“不支持原子移动”，且普通移动目标必须事先不存在。
+     */
+    @Test
+    void fallsBackToNonReplacingMoveOnlyWhenAtomicMoveIsUnsupported() throws Exception {
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            Path runtimeFile = storageRoot.resolve(directory).resolve("original.txt");
+            Files.createDirectories(runtimeFile.getParent());
+            Files.writeString(runtimeFile, directory);
+        }
+        ManagedStorageSwap swap = new ManagedStorageSwap(
+                storageRoot,
+                (source, target) -> {
+                    throw new java.nio.file.AtomicMoveNotSupportedException(
+                            source.toString(), target.toString(), "模拟 DrvFS 不支持 ATOMIC_MOVE");
+                },
+                Files::move);
+
+        ManagedStorageSwap.PreparedStorageSwap prepared = swap.prepare(UUID.randomUUID());
+        swap.restore(prepared);
+
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            org.assertj.core.api.Assertions.assertThat(storageRoot.resolve(directory).resolve("original.txt"))
+                    .hasContent(directory);
+        }
+        assertDemoResetHasNoOperations();
+    }
+
+    /**
+     * 测试场景：ATOMIC_MOVE 不受支持，且随后普通无覆盖 move 也失败。
+     * 前置条件：两个移动替身都在改变任何路径前抛出各自异常。
+     * 期望结果：prepare 失败，三个未移动目录完整保留，operation 被安全清理。
+     * 断言重点：普通 move 的 IOException 不能再次泛化降级或触发未移动目标删除。
+     */
+    @Test
+    void preservesAllDirectoriesWhenAtomicFallbackMoveAlsoFails() throws Exception {
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            Path runtimeFile = storageRoot.resolve(directory).resolve("original.txt");
+            Files.createDirectories(runtimeFile.getParent());
+            Files.writeString(runtimeFile, directory);
+        }
+        ManagedStorageSwap swap = new ManagedStorageSwap(
+                storageRoot,
+                (source, target) -> {
+                    throw new java.nio.file.AtomicMoveNotSupportedException(
+                            source.toString(), target.toString(), "模拟不支持原子移动");
+                },
+                (source, target) -> {
+                    throw new java.io.IOException("模拟普通无覆盖 move 失败");
+                });
+
+        assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("暂存失败");
+
+        for (String directory : java.util.List.of("uploads", "skill-snapshots", "skill-runtime")) {
+            org.assertj.core.api.Assertions.assertThat(storageRoot.resolve(directory).resolve("original.txt"))
+                    .hasContent(directory);
+        }
+        assertDemoResetHasNoOperations();
+    }
+
+    /** 当前测试根下不得残留任何一次失败操作目录。 */
+    private void assertDemoResetHasNoOperations() throws Exception {
+        assertDemoResetHasNoOperations(storageRoot);
+    }
+
+    /** 指定场景根下的 .demo-reset 可以不存在；存在时必须为空。 */
+    private static void assertDemoResetHasNoOperations(Path scenarioRoot) throws Exception {
+        Path resetRoot = scenarioRoot.resolve(".demo-reset");
+        if (Files.notExists(resetRoot)) {
+            return;
+        }
+        try (var children = Files.list(resetRoot)) {
+            org.assertj.core.api.Assertions.assertThat(children.toList()).isEmpty();
+        }
     }
 }

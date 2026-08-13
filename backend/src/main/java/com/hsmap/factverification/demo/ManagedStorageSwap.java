@@ -31,7 +31,8 @@ public class ManagedStorageSwap {
     private static final String GIT_KEEP = ".gitkeep";
 
     private final Path storageRoot;
-    private final AtomicMover mover;
+    private final AtomicMover atomicMover;
+    private final AtomicMover regularMover;
 
     /** 生产环境从工作台既有 storageRoot 取得唯一允许管理的目录根。 */
     @Autowired
@@ -41,13 +42,19 @@ public class ManagedStorageSwap {
 
     /** 为文件系统单元测试提供隔离根；生产装配始终使用 WorkbenchProperties 构造器。 */
     public ManagedStorageSwap(Path storageRoot) {
-        this(storageRoot, ManagedStorageSwap::atomicMove);
+        this(storageRoot, ManagedStorageSwap::atomicMove, ManagedStorageSwap::regularMove);
     }
 
     /** 包内测试可注入只在指定一次移动失败的替身，验证三目录交换的精确恢复语义。 */
     ManagedStorageSwap(Path storageRoot, AtomicMover mover) {
+        this(storageRoot, mover, ManagedStorageSwap::regularMove);
+    }
+
+    /** 包内测试分别控制原子移动和 DrvFS 降级移动，生产装配始终使用两个固定 Files.move 实现。 */
+    ManagedStorageSwap(Path storageRoot, AtomicMover atomicMover, AtomicMover regularMover) {
         this.storageRoot = storageRoot.toAbsolutePath().normalize();
-        this.mover = mover;
+        this.atomicMover = atomicMover;
+        this.regularMover = regularMover;
     }
 
     /**
@@ -82,14 +89,16 @@ public class ManagedStorageSwap {
                             || !Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) {
                         throw new IOException("受管运行目录不是普通目录");
                     }
-                    mover.move(source, archive);
+                    moveWithinStorageRoot(source, archive);
                     movedDirectories.put(source, archive);
                 }
                 createEmptyManagedDirectory(source);
             }
             return new PreparedStorageSwap(archiveRoot, Map.copyOf(movedDirectories));
         } catch (IOException exception) {
-            restoreMovedDirectories(movedDirectories);
+            if (restoreMovedDirectories(movedDirectories)) {
+                cleanupEmptyFailedOperation(archiveRoot);
+            }
             throw new ServiceException("DEMO_STORAGE_SWAP_FAILED", "演示运行目录暂存失败");
         }
     }
@@ -115,7 +124,7 @@ public class ManagedStorageSwap {
                 deleteTree(target);
                 Path archive = prepared.movedDirectories().get(target);
                 if (archive != null && Files.exists(archive, LinkOption.NOFOLLOW_LINKS)) {
-                    mover.move(requireWithinStorageRoot(archive), target);
+                    moveWithinStorageRoot(requireWithinStorageRoot(archive), target);
                 }
             }
             deleteTree(requireWithinStorageRoot(prepared.archiveRoot()));
@@ -147,8 +156,8 @@ public class ManagedStorageSwap {
                         || !isBlank(target)) {
                     throw new ServiceException("DEMO_STATE_NOT_BLANK", "正式运行目录在导入期间变为非空");
                 }
-                mover.move(target, blankBackup);
-                mover.move(source, target);
+                moveWithinStorageRoot(target, blankBackup);
+                moveWithinStorageRoot(source, target);
                 Files.writeString(requireWithinStorageRoot(target.resolve(GIT_KEEP)), "");
             }
         } catch (ServiceException exception) {
@@ -180,18 +189,39 @@ public class ManagedStorageSwap {
         return normalized;
     }
 
-    private void restoreMovedDirectories(Map<Path, Path> movedDirectories) {
+    private boolean restoreMovedDirectories(Map<Path, Path> movedDirectories) {
         try {
-            for (String directoryName : MANAGED_DIRECTORIES) {
-                Path target = requireWithinStorageRoot(storageRoot.resolve(directoryName));
+            List<Map.Entry<Path, Path>> moved = new java.util.ArrayList<>(movedDirectories.entrySet());
+            java.util.Collections.reverse(moved);
+            for (Map.Entry<Path, Path> entry : moved) {
+                Path target = requireWithinStorageRoot(entry.getKey());
                 deleteTree(target);
-                Path archive = movedDirectories.get(target);
+                Path archive = entry.getValue();
                 if (archive != null && Files.exists(archive, LinkOption.NOFOLLOW_LINKS)) {
-                    mover.move(requireWithinStorageRoot(archive), target);
+                    moveWithinStorageRoot(requireWithinStorageRoot(archive), target);
                 }
             }
+            return true;
         } catch (IOException restoreException) {
             // 首次移动失败后的恢复已经无法向调用方提供安全的“可继续”状态，因此保留现场并由原始异常统一转换为业务错误。
+            return false;
+        }
+    }
+
+    /** prepare 失败且全部已移动目录都恢复后，只清理本次确认为空的 operation，不遍历或删除正式目录。 */
+    private void cleanupEmptyFailedOperation(Path archiveRoot) {
+        try {
+            if (Files.isDirectory(archiveRoot, LinkOption.NOFOLLOW_LINKS) && isDirectoryEmpty(archiveRoot)) {
+                Files.delete(archiveRoot);
+            }
+            Path resetRoot = archiveRoot.getParent();
+            if (resetRoot != null
+                    && Files.isDirectory(resetRoot, LinkOption.NOFOLLOW_LINKS)
+                    && isDirectoryEmpty(resetRoot)) {
+                Files.delete(resetRoot);
+            }
+        } catch (IOException cleanupException) {
+            // operation 仅为空目录；清理失败时保留现场，不得为清理它扩大到正式目录或覆盖原始移动异常。
         }
     }
 
@@ -224,12 +254,36 @@ public class ManagedStorageSwap {
         }
     }
 
-    private static void atomicMove(Path source, Path target) throws IOException {
-        try {
-            Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
-        } catch (AtomicMoveNotSupportedException exception) {
-            throw exception;
+    /**
+     * 在同一 storageRoot 内优先原子移动；仅 DrvFS 明确不支持 ATOMIC_MOVE 时降级为无覆盖普通 move。
+     *
+     * <p>调用仍位于共享管理写锁及数据库表锁包围的短事务内，源和目标均是固定受管路径；其他 IOException
+     * 原样失败，不得泛化降级。两种移动前都要求目标在 NOFOLLOW 语义下不存在，禁止覆盖任何并发或异常现场。
+     */
+    private void moveWithinStorageRoot(Path source, Path target) throws IOException {
+        Path safeSource = requireWithinStorageRoot(source);
+        Path safeTarget = requireWithinStorageRoot(target);
+        if (Files.exists(safeTarget, LinkOption.NOFOLLOW_LINKS)) {
+            throw new java.nio.file.FileAlreadyExistsException(safeTarget.toString());
         }
+        try {
+            atomicMover.move(safeSource, safeTarget);
+        } catch (AtomicMoveNotSupportedException exception) {
+            if (Files.exists(safeTarget, LinkOption.NOFOLLOW_LINKS)) {
+                throw new java.nio.file.FileAlreadyExistsException(safeTarget.toString());
+            }
+            regularMover.move(safeSource, safeTarget);
+        }
+    }
+
+    /** 生产原子移动不带 REPLACE；是否允许降级只由 moveWithinStorageRoot 判断。 */
+    private static void atomicMove(Path source, Path target) throws IOException {
+        Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
+    }
+
+    /** DrvFS 兼容移动同样不带 REPLACE，目标存在时由调用点和 Files.move 双重拒绝。 */
+    private static void regularMove(Path source, Path target) throws IOException {
+        Files.move(source, target);
     }
 
     private static void deleteTree(Path root) throws IOException {

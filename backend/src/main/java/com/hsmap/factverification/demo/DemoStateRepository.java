@@ -130,6 +130,61 @@ public class DemoStateRepository {
     }
 
     /**
+     * 恢复进程退出前 worker 尚未启动而遗留的超时 PRIMARY 运行及对应任务。
+     *
+     * <p>候选条件、一个小时时限、失败码和脱敏摘要全部固定在 SQL 中；调用方不能传入主键或阈值。数据修改 CTE
+     * 先更新运行，再仅凭其 RETURNING 结果更新任务，使服务层可在同一事务提交前核对两类更新数量。
+     */
+    public StaleRecoveryCounts recoverStalePendingPrimaryRuns() {
+        return jdbcTemplate.queryForObject(
+                """
+                with candidates as materialized (
+                    select r.id as run_id, t.id as task_id
+                      from test.verification_task t
+                      join test.verification_run r on r.task_id = t.id
+                     where t.status = 'RUNNING'
+                       and r.run_type = 'PRIMARY'
+                       and r.status = 'PENDING'
+                       and r.started_at is null
+                       and r.created_at <= CURRENT_TIMESTAMP - interval '1 hour'
+                       and not exists (
+                           select 1
+                             from test.verification_run other
+                            where other.task_id = t.id
+                              and other.id <> r.id
+                              and other.status in ('PENDING', 'RUNNING')
+                       )
+                ),
+                updated_runs as (
+                    update test.verification_run r
+                       set status = 'FAILED',
+                           error_code = 'STALE_RUN_RECOVERED',
+                           error_summary = '测试管理入口已回收进程退出前尚未启动的遗留核验运行',
+                           finished_at = CURRENT_TIMESTAMP
+                      from candidates c
+                     where r.id = c.run_id
+                       and r.status = 'PENDING'
+                    returning c.task_id
+                ),
+                updated_tasks as (
+                    update test.verification_task t
+                       set status = 'FAILED',
+                           error_code = 'STALE_RUN_RECOVERED',
+                           error_summary = '测试管理入口已回收进程退出前尚未启动的遗留核验任务',
+                           updated_at = CURRENT_TIMESTAMP
+                      from updated_runs r
+                     where t.id = r.task_id
+                       and t.status = 'RUNNING'
+                    returning t.id
+                )
+                select (select count(*) from updated_tasks) as recovered_tasks,
+                       (select count(*) from updated_runs) as recovered_runs
+                """,
+                (resultSet, rowNum) -> new StaleRecoveryCounts(
+                        resultSet.getInt("recovered_tasks"), resultSet.getInt("recovered_runs")));
+    }
+
+    /**
      * 在同一数据库事务中按既有外键顺序清理比赛数据。
      *
      * <p>skill_version 在删除前先解除自引用和注册评测引用，随后才能清理版本及其父级 evaluation_run；顺序不得由调用方改变。
@@ -150,6 +205,9 @@ public class DemoStateRepository {
     public interface JsonRowConsumer {
         void accept(String json) throws IOException;
     }
+
+    /** 固定恢复 SQL 的最小数量投影；服务层在事务提交前要求任务数和运行数严格一致。 */
+    public record StaleRecoveryCounts(int recoveredTasks, int recoveredRuns) {}
 
     /** 在 JdbcTemplate 回调中短路传播受检 IOException，外层会还原原始异常。 */
     private static final class JsonRowAccessException extends RuntimeException {

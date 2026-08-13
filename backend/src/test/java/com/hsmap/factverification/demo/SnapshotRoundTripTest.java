@@ -25,6 +25,7 @@ import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.Future;
 import java.util.concurrent.TimeUnit;
+import java.util.zip.ZipInputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -107,6 +108,56 @@ class SnapshotRoundTripTest {
                         SnapshotTable.RELEASE_BINDING);
         assertThat(targetRepository.skillReferencesRestored()).isTrue();
         assertThat(targetRepository.lockBeforeFirstInsert()).isTrue();
+    }
+
+    /**
+     * 测试场景：create 已落库但调用方尚未上传材料的精确空上传槽参与快照往返。
+     * 前置条件：任务逐字段匹配生产 create 的 placeholder 签名，源和目标 storageRoot 均不存在 pending-upload 文件，且无运行、声明或证据。
+     * 期望结果：v1 ZIP 不伪造 placeholder 文件，导入保留任务并把 upload_path 改写到目标根的规范位置。
+     * 断言重点：这是合法未上传状态的精确语义，不是对任意缺失附件的容忍。
+     */
+    @Test
+    void roundTripsExactEmptyUploadSlotWithoutInventingPlaceholderFile() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        Path sourceStorage = temporaryRoot.resolve("empty-slot-source");
+        Path targetStorage = temporaryRoot.resolve("empty-slot-target");
+        Path sourcePlaceholder = sourceStorage.resolve("uploads/" + taskId + "/pending-upload");
+        EnumMap<SnapshotTable, List<String>> sourceRows = new EnumMap<>(SnapshotTable.class);
+        for (SnapshotTable table : SnapshotTable.values()) {
+            sourceRows.put(table, List.of());
+        }
+        sourceRows.put(SnapshotTable.VERIFICATION_TASK, List.of(emptyUploadSlotRow(taskId, sourcePlaceholder)));
+        ByteArrayOutputStream zip = new ByteArrayOutputStream();
+
+        archive(new InMemorySnapshotRepository(sourceRows), sourceStorage).exportTo(zip);
+
+        Map<String, byte[]> exportedEntries = readZip(zip.toByteArray());
+        SnapshotManifest manifest = OBJECT_MAPPER.readValue(exportedEntries.get("manifest.json"), SnapshotManifest.class);
+        assertThat(exportedEntries.keySet()).noneMatch(name -> name.contains("pending-upload"));
+        assertThat(manifest.files()).noneMatch(file -> file.path().contains("pending-upload"));
+        InMemorySnapshotRepository targetRepository = new InMemorySnapshotRepository(new EnumMap<>(SnapshotTable.class));
+        archive(targetRepository, targetStorage)
+                .importFrom(new ByteArrayInputStream(zip.toByteArray()), "导入快照");
+
+        assertThat(targetRepository.rows().get(SnapshotTable.VERIFICATION_TASK)).singleElement().satisfies(row -> {
+            try {
+                JsonNode task = OBJECT_MAPPER.readTree(row);
+                assertThat(task.path("status").asText()).isEqualTo("UPLOADED");
+                assertThat(task.path("original_file_name").asText()).isEqualTo("pending-upload");
+                assertThat(task.path("upload_path").asText())
+                        .isEqualTo(targetStorage
+                                .resolve("uploads/" + taskId + "/pending-upload")
+                                .toAbsolutePath()
+                                .normalize()
+                                .toString());
+            } catch (Exception exception) {
+                throw new AssertionError(exception);
+            }
+        });
+        assertThat(targetRepository.rows().get(SnapshotTable.VERIFICATION_RUN)).isEmpty();
+        assertThat(targetRepository.rows().get(SnapshotTable.CLAIM)).isEmpty();
+        assertThat(targetRepository.rows().get(SnapshotTable.EVIDENCE_SNAPSHOT)).isEmpty();
+        assertThat(targetStorage.resolve("uploads/" + taskId + "/pending-upload")).doesNotExist();
     }
 
     /**
@@ -388,6 +439,29 @@ class SnapshotRoundTripTest {
         return rows;
     }
 
+    /** 生成逐字段等于 VerificationTaskService.create 的合法空上传槽 JSON 行。 */
+    private static String emptyUploadSlotRow(UUID taskId, Path uploadPath) throws Exception {
+        ObjectNode row = OBJECT_MAPPER.createObjectNode();
+        row.put("id", taskId.toString());
+        row.put("request_id", "empty-slot-request");
+        row.put("original_file_name", "pending-upload");
+        row.put("media_type", "application/octet-stream");
+        row.put("file_size", 1);
+        row.put("file_hash", "0".repeat(64));
+        row.put("upload_path", uploadPath.toAbsolutePath().normalize().toString());
+        row.putNull("parser_version");
+        row.putNull("document_snapshot");
+        row.putNull("document_snapshot_hash");
+        row.putNull("evidence_snapshot_id");
+        row.put("status", "UPLOADED");
+        row.put("shadow_requested", false);
+        row.putNull("error_code");
+        row.putNull("error_summary");
+        row.put("created_at", "2026-08-13T00:00:00Z");
+        row.put("updated_at", "2026-08-13T00:00:00Z");
+        return OBJECT_MAPPER.writeValueAsString(row);
+    }
+
     /** 对比所有 JSON 行，仅把任务上传路径替换成目标环境绝对规范路径后再断言。 */
     private static void assertRowsEqualExceptUploadPath(
             Map<SnapshotTable, List<String>> source,
@@ -461,6 +535,18 @@ class SnapshotRoundTripTest {
     private static String sha256(byte[] bytes) throws Exception {
         return java.util.HexFormat.of()
                 .formatHex(MessageDigest.getInstance("SHA-256").digest(bytes));
+    }
+
+    /** 将内存 ZIP 展开为 entry 映射，仅供测试核对 manifest 与 placeholder 未产生伪文件。 */
+    private static Map<String, byte[]> readZip(byte[] bytes) throws Exception {
+        Map<String, byte[]> entries = new java.util.LinkedHashMap<>();
+        try (ZipInputStream input = new ZipInputStream(new ByteArrayInputStream(bytes))) {
+            java.util.zip.ZipEntry entry;
+            while ((entry = input.getNextEntry()) != null) {
+                entries.put(entry.getName(), input.readAllBytes());
+            }
+        }
+        return entries;
     }
 
     /** 生成可嵌入 JSON 字符串的跨平台路径文本。 */

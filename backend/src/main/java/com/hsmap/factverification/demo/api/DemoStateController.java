@@ -5,11 +5,13 @@ import com.hsmap.factverification.demo.DemoStateView;
 import com.hsmap.factverification.demo.BuiltinDemoFixtureService;
 import com.hsmap.factverification.demo.SnapshotArchiveService;
 import com.hsmap.factverification.demo.SkillPresetService;
+import com.hsmap.factverification.demo.StaleRecoveryView;
 import com.hsmap.factverification.shared.RequestId;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
 import java.io.IOException;
+import java.nio.charset.StandardCharsets;
 import java.time.LocalDate;
 import java.time.ZoneOffset;
 import org.springframework.boot.autoconfigure.condition.ConditionalOnProperty;
@@ -72,6 +74,16 @@ public class DemoStateController {
     }
 
     /**
+     * 回收一小时以上且 worker 从未启动的固定遗留核验模式。
+     *
+     * <p>HTTP 层只接受精确确认头，不接受任务 ID、运行 ID 或阈值；全部候选条件由服务事务内的固定 SQL 决定。
+     */
+    @PostMapping("/recover-stale")
+    public StaleRecoveryView recoverStale(@RequestHeader("X-Confirmation-Phrase") String confirmationPhrase) {
+        return service.recoverStale(exactUtf8HeaderPhrase(confirmationPhrase, "回收遗留任务"));
+    }
+
+    /**
      * 流式下载当前静止比赛状态，文件名只含 UTC 日期，不暴露 storageRoot 或数据库身份。
      *
      * <p>StreamingResponseBody 的写入回调由快照服务先执行活动状态保护，再按行/按文件写 ZIP。
@@ -94,7 +106,7 @@ public class DemoStateController {
     public DemoStateView importSnapshot(
             @RequestHeader("X-Confirmation-Phrase") String confirmationPhrase, HttpServletRequest request)
             throws IOException {
-        snapshots.importFrom(request.getInputStream(), confirmationPhrase);
+        snapshots.importFrom(request.getInputStream(), exactUtf8HeaderPhrase(confirmationPhrase, "导入快照"));
         return service.status();
     }
 
@@ -107,8 +119,21 @@ public class DemoStateController {
     /** 使用专用确认短语从空状态恢复固定脱敏 fixture，并返回 Task 4 既有状态投影。 */
     @PostMapping("/import-builtin")
     public DemoStateView importBuiltin(@RequestHeader("X-Confirmation-Phrase") String confirmationPhrase) {
-        builtinFixture.importBuiltin(confirmationPhrase);
+        builtinFixture.importBuiltin(exactUtf8HeaderPhrase(confirmationPhrase, "导入内置演示数据"));
         return service.status();
+    }
+
+    /**
+     * 还原 Servlet 按 ISO-8859-1 投影的固定 UTF-8 中文确认头。
+     *
+     * <p>仅当接收值逐字等于某条已知短语的 UTF-8 原始字节投影时才还原；其他值保持不变并由服务层拒绝，不能借此解码任意输入。
+     */
+    private static String exactUtf8HeaderPhrase(String received, String expected) {
+        if (expected.equals(received)) {
+            return received;
+        }
+        String servletProjection = new String(expected.getBytes(StandardCharsets.UTF_8), StandardCharsets.ISO_8859_1);
+        return servletProjection.equals(received) ? expected : received;
     }
 
     /** 管理端重置正文只承载显式确认语，避免接受表名、目录名或任意清理选项。 */

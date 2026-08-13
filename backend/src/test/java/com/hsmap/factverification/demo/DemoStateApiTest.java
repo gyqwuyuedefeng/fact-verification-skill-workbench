@@ -69,6 +69,49 @@ class DemoStateApiTest {
     }
 
     /**
+     * 测试场景：test-only 管理端提交固定确认头回收遗留核验。
+     * 前置条件：服务返回零条恢复结果及既有脱敏状态投影。
+     * 期望结果：POST 返回恢复数量和 status，确认短语逐字交给服务层验证。
+     * 断言重点：端点不接受任务 ID、运行 ID、超时阈值或请求正文。
+     */
+    @Test
+    void exposesFixedStaleRecoveryEndpoint() throws Exception {
+        org.mockito.Mockito.when(service.recoverStale("回收遗留任务"))
+                .thenReturn(new StaleRecoveryView(0, 0, new DemoStateView(Map.of(), Map.of())));
+
+        mvc.perform(post("/api/admin/demo-state/recover-stale")
+                        .header("X-Confirmation-Phrase", "回收遗留任务"))
+                .andExpect(status().isOk())
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.recoveredTasks")
+                        .value(0))
+                .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$.recoveredRuns")
+                        .value(0));
+
+        verify(service).recoverStale("回收遗留任务");
+    }
+
+    /**
+     * 测试场景：真实 HTTP 连接把中文确认头的 UTF-8 字节按 ISO-8859-1 投影给 Servlet。
+     * 前置条件：请求字节仍精确等于“回收遗留任务”的 UTF-8，不接受 URL 编码或近似文本。
+     * 期望结果：控制器只将这组固定字节还原为业务短语，服务层继续执行逐字安全校验。
+     * 断言重点：兼容仅发生在 HTTP 适配边界，不能放宽服务确认语或接受调用方自定义值。
+     */
+    @Test
+    void restoresExactUtf8ConfirmationPhraseFromServletHeaderBytes() throws Exception {
+        String servletHeader = new String(
+                "回收遗留任务".getBytes(java.nio.charset.StandardCharsets.UTF_8),
+                java.nio.charset.StandardCharsets.ISO_8859_1);
+        org.mockito.Mockito.when(service.recoverStale("回收遗留任务"))
+                .thenReturn(new StaleRecoveryView(0, 0, new DemoStateView(Map.of(), Map.of())));
+
+        mvc.perform(post("/api/admin/demo-state/recover-stale")
+                        .header("X-Confirmation-Phrase", servletHeader))
+                .andExpect(status().isOk());
+
+        verify(service).recoverStale("回收遗留任务");
+    }
+
+    /**
      * 测试场景：管理端流式下载快照并以原始 application/zip 请求体导入。
      * 前置条件：导出服务向响应流写入少量 ZIP 标识字节，导入携带固定 X-Confirmation-Phrase。
      * 期望结果：下载响应含附件文件名和 ZIP 媒体类型，上传字节与确认语原样交给快照服务。

@@ -22,11 +22,12 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class DemoStateService {
 
     private static final String CONFIRMATION_PHRASE = "清空全部比赛数据";
+    private static final String STALE_RECOVERY_CONFIRMATION_PHRASE = "回收遗留任务";
     private static final int MAX_RESET_IDEMPOTENCY_KEYS = 64;
 
     private final DemoStateRepository repository;
     private final ManagedStorageSwap storageSwap;
-    private final TransactionTemplate resetTransactionTemplate;
+    private final TransactionTemplate managementTransactionTemplate;
     private final DemoOperationCoordinator operationCoordinator;
     private final Object idempotencyMonitor = new Object();
     private final Map<String, CompletableFuture<DemoStateView>> resetResults = new LinkedHashMap<>();
@@ -34,7 +35,7 @@ public class DemoStateService {
     /**
      * 注入固定状态仓储、受管目录交换器和底层事务管理器。
      *
-     * <p>此处新建只属于 reset 的 REQUIRES_NEW 模板，不修改也不复用其他业务服务可能正在参与的 REQUIRED 模板。
+     * <p>此处新建只属于 test-only 状态管理的 REQUIRES_NEW 模板，不修改也不复用其他业务服务可能正在参与的 REQUIRED 模板。
      */
     @Autowired
     public DemoStateService(
@@ -45,8 +46,8 @@ public class DemoStateService {
         this.repository = repository;
         this.storageSwap = storageSwap;
         this.operationCoordinator = operationCoordinator;
-        this.resetTransactionTemplate = new TransactionTemplate(transactionManager);
-        this.resetTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+        this.managementTransactionTemplate = new TransactionTemplate(transactionManager);
+        this.managementTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** Task 4 旧单元测试的包内构造边界；生产装配始终注入共享协调器。 */
@@ -104,7 +105,7 @@ public class DemoStateService {
     private DemoStateView performReset() {
         AtomicReference<ManagedStorageSwap.PreparedStorageSwap> prepared = new AtomicReference<>();
         try {
-            resetTransactionTemplate.executeWithoutResult(status -> {
+            managementTransactionTemplate.executeWithoutResult(status -> {
                 // 先取表锁再重查活动状态，普通 DB 写入要么已提交并被检查看到，要么在本事务后继续。
                 repository.lockAllTablesForStateReplacement();
                 requireNoActiveWork();
@@ -126,10 +127,42 @@ public class DemoStateService {
         return status();
     }
 
+    /**
+     * 回收唯一可安全识别的遗留核验模式，并返回更新数量和最新脱敏状态。
+     *
+     * <p>确认短语先于共享写锁和数据库事务校验；恢复本身在写锁内使用独立事务，避免与 reset/import 并发替换同一批数据。
+     */
+    public StaleRecoveryView recoverStale(String confirmationPhrase) {
+        requireExactStaleRecoveryConfirmationPhrase(confirmationPhrase);
+        return operationCoordinator.exclusively(() -> {
+            DemoStateRepository.StaleRecoveryCounts recovered = managementTransactionTemplate.execute(status -> {
+                // 固定七表锁必须是事务内第一项数据库动作，随后仓储只运行不接收参数的固定恢复 SQL。
+                repository.lockAllTablesForStateReplacement();
+                DemoStateRepository.StaleRecoveryCounts counts = repository.recoverStalePendingPrimaryRuns();
+                if (counts.recoveredTasks() != counts.recoveredRuns()) {
+                    throw new ServiceException(
+                            "DEMO_STALE_RECOVERY_COUNT_MISMATCH", "遗留核验任务与运行的恢复数量不一致，已回滚本次恢复");
+                }
+                return counts;
+            });
+            if (recovered == null) {
+                throw new ServiceException("DEMO_STALE_RECOVERY_NO_RESULT", "遗留核验恢复未返回数据库结果，已回滚本次恢复");
+            }
+            return new StaleRecoveryView(recovered.recoveredTasks(), recovered.recoveredRuns(), status());
+        });
+    }
+
     /** 校验固定确认短语；失败时不创建幂等键，避免无效请求挤占有限的单进程安全容量。 */
     private static void requireExactConfirmationPhrase(String confirmationPhrase) {
         if (!CONFIRMATION_PHRASE.equals(confirmationPhrase)) {
             throw new ServiceException("DEMO_RESET_CONFIRMATION_INVALID", "确认短语必须为“清空全部比赛数据”");
+        }
+    }
+
+    /** 恢复确认语与 reset/import 相互独立；错误短语不得进入协调锁或创建数据库事务。 */
+    private static void requireExactStaleRecoveryConfirmationPhrase(String confirmationPhrase) {
+        if (!STALE_RECOVERY_CONFIRMATION_PHRASE.equals(confirmationPhrase)) {
+            throw new ServiceException("DEMO_STALE_RECOVERY_CONFIRMATION_INVALID", "确认短语必须为“回收遗留任务”");
         }
     }
 

@@ -3,6 +3,7 @@ package com.hsmap.factverification.demo;
 import jakarta.validation.constraints.Positive;
 import java.nio.file.Path;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
 
 /**
@@ -19,6 +20,14 @@ public record DemoAdminProperties(
         @Positive long maxArchiveBytes,
         @Positive int maxEntryCount,
         @Positive long maxExpandedBytes) {
+
+    /**
+     * 明确指定配置绑定使用完整规范构造器。
+     *
+     * <p>本 record 为旧测试保留了一个五参数兼容构造器；Spring Boot 4 在存在多个构造器时不会自行猜测，必须由此注解固定生产装配边界。
+     */
+    @ConstructorBinding
+    public DemoAdminProperties {}
 
     /** 保留 Task 5 包内测试构造合同；旧用例不消费 preset 根，默认指向正式相对路径。 */
     DemoAdminProperties(
