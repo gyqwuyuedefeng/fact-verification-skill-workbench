@@ -259,7 +259,7 @@
           },
           {
             "sampleId": "initial-3",
-            "gold": {"sampleId":"initial-3","category":"风险核验","material":{"text":"材料包含一条风险主张。"},"expectedSubject":{"name":"演示公司丙"},"normalizedClaim":{"type":"RISK"},"expectedStatus":"CONFLICTED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":[]},
+            "gold": {"sampleId":"initial-3","category":"风险核验","material":{"text":"材料包含一条风险主张。"},"expectedSubject":{"name":"演示公司丙"},"normalizedClaim":{"type":"RISK"},"expectedStatus":"CONFLICT","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":[]},
             "variantResults": {
               "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"initial-3","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
               "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"initial-3","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]}
@@ -303,7 +303,7 @@
         "sample_results_json": [
           {
             "sampleId": "improved-1",
-            "gold": {"sampleId":"improved-1","category":"正向存在性","material":{"text":"空结果不能直接证明正向事实为假。"},"expectedSubject":{"name":"演示公司甲"},"normalizedClaim":{"type":"POSITIVE_EXISTENCE"},"expectedStatus":"UNVERIFIABLE","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":["空结果"]},
+            "gold": {"sampleId":"improved-1","category":"正向存在性","material":{"text":"空结果不能直接证明正向事实为假。"},"expectedSubject":{"name":"演示公司甲"},"normalizedClaim":{"type":"POSITIVE_EXISTENCE"},"expectedStatus":"INSUFFICIENT","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":["空结果"]},
             "variantResults": {
               "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"improved-1","accurate":false,"completed":false,"requiresHumanIntervention":true},"attempts":[]},
               "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"improved-1","accurate":false,"completed":true,"requiresHumanIntervention":true},"attempts":[]},

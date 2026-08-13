@@ -23,6 +23,7 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.Set;
 import java.util.UUID;
 import org.junit.jupiter.api.Test;
 import org.springframework.core.io.ClassPathResource;
@@ -41,6 +42,7 @@ class BuiltinDemoEvaluationContractTest {
     private static final UUID REGRESSION_ID = UUID.fromString("10000000-0000-0000-0000-000000000003");
     private static final List<String> METRIC_NAMES =
             List.of("accuracy", "completionRate", "stability", "humanInterventionRate");
+    private static final Set<String> ALLOWED_GOLD_STATUSES = Set.of("VERIFIED", "CONFLICT", "INSUFFICIENT");
     private static final Map<String, String> METRIC_DEFINITIONS = Map.of(
             "accuracy", "主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数",
             "completionRate", "时限内完成并产生合法结果的样本数 / 样本总数",
@@ -57,6 +59,7 @@ class BuiltinDemoEvaluationContractTest {
     void exposesCompleteMetricsAndSampleScoresThroughEvaluationService() throws Exception {
         JsonNode evaluations = fixtureEvaluations();
         EvaluationService service = service(evaluations);
+        List<String> goldStatuses = new ArrayList<>();
 
         for (JsonNode evaluation : evaluations) {
             List<String> variants = variantIdentifiers(evaluation);
@@ -83,6 +86,7 @@ class BuiltinDemoEvaluationContractTest {
             assertThat(samples).hasSize(evaluation.path("sample_count").asInt());
             for (Map<String, Object> sample : samples) {
                 JsonNode sampleNode = OBJECT_MAPPER.valueToTree(sample);
+                goldStatuses.add(sampleNode.path("gold").path("expectedStatus").asText());
                 assertThat(fieldNames(sampleNode.path("variantResults"))).containsExactlyElementsOf(variants);
                 for (String variant : variants) {
                     assertThat(sampleNode.path("variantResults").path(variant).path("score").path("accurate").isBoolean())
@@ -90,6 +94,7 @@ class BuiltinDemoEvaluationContractTest {
                 }
             }
         }
+        assertThat(goldStatuses).containsOnlyElementsOf(ALLOWED_GOLD_STATUSES);
 
         JsonNode initialSamples = evaluations.get(0).path("sample_results_json");
         long stableWins = accurateWins(initialSamples, "BASELINE", STABLE_ID.toString());
