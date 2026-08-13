@@ -19,6 +19,9 @@ describe('评测展示标签', () => {
     expect(statusLabel('RUNNING')).toBe('运行中（RUNNING）')
     expect(metricLabel('humanInterventionRate')).toBe('人工介入率（humanInterventionRate）')
     expect(skillVersionLabel(candidate)).toContain('候选版（CANDIDATE）')
+    expect(statusLabel('VERIFIED')).toBe('已核验（VERIFIED）')
+    expect(statusLabel('CONFLICT')).toBe('存在冲突（CONFLICT）')
+    expect(statusLabel('INSUFFICIENT')).toBe('证据不足（INSUFFICIENT）')
   })
 
   it('未知标签和长 ID 不会静默丢失原值', () => {

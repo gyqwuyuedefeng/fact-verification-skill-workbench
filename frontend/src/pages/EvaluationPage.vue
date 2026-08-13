@@ -20,7 +20,8 @@ const summaryVersionId = ref('')
 const leftVersionId = ref('')
 const rightVersionId = ref('')
 const lastRefreshedAt = ref<string | null>(null)
-let pollTimer: number | undefined
+let pollTimer: ReturnType<typeof globalThis.setTimeout> | undefined
+let pollGeneration = 0
 
 const stableVersions = computed(() => skillStore.versions.filter((item) => item.status === 'STABLE'))
 const candidateVersions = computed(() => skillStore.versions.filter((item) => item.status === 'CANDIDATE'))
@@ -36,7 +37,8 @@ const modelParameters = computed(() => {
 })
 
 async function start() {
-  if (!candidateVersionId.value || store.busy) return
+  if (!candidateVersionId.value || store.creating) return
+  stopPolling()
   const created = await store.start(datasetVersion.value, variantsForRun()).catch(() => null)
   if (!created) return
   await router?.replace({ query: { evaluationId: created.id } })
@@ -49,22 +51,32 @@ function variantsForRun(): string[] {
 }
 
 function stopPolling() {
+  pollGeneration += 1
   if (pollTimer !== undefined) {
-    globalThis.clearInterval(pollTimer)
+    globalThis.clearTimeout(pollTimer)
     pollTimer = undefined
   }
 }
 
 async function refreshAndTrack(id: string) {
   await store.refreshEvaluation(id)
-  lastRefreshedAt.value = new Date().toISOString()
+  if (store.evaluation?.id === id) lastRefreshedAt.value = new Date().toISOString()
 }
 
 function startPolling(id: string) {
   stopPolling()
-  pollTimer = globalThis.setInterval(async () => {
+  schedulePolling(id, pollGeneration)
+}
+
+function schedulePolling(id: string, generation: number) {
+  pollTimer = globalThis.setTimeout(async () => {
+    pollTimer = undefined
     await refreshAndTrack(id).catch(() => undefined)
-    if (!activeRun.value || store.evaluation?.id !== id) stopPolling()
+    if (generation !== pollGeneration || !activeRun.value || store.evaluation?.id !== id) {
+      if (generation === pollGeneration) stopPolling()
+      return
+    }
+    schedulePolling(id, generation)
   }, 5_000)
 }
 
@@ -77,19 +89,22 @@ async function selectEvaluation(id: string) {
 
 async function refreshCurrentEvaluation() {
   if (!store.evaluation) return
-  await refreshAndTrack(store.evaluation.id).catch(() => undefined)
-  if (!activeRun.value) stopPolling()
+  const evaluationId = store.evaluation.id
+  stopPolling()
+  await refreshAndTrack(evaluationId).catch(() => undefined)
+  if (activeRun.value && store.evaluation?.id === evaluationId) startPolling(evaluationId)
 }
 
 onMounted(async () => {
-  await Promise.all([
-    skillStore.load().catch(() => undefined),
-    store.loadHistory().catch(() => undefined),
-  ])
+  void skillStore.load().catch(() => undefined)
+  void store.loadHistory().catch(() => undefined)
   const evaluationId = typeof route?.query.evaluationId === 'string' ? route.query.evaluationId : null
   if (!evaluationId) return
+  const generation = pollGeneration
   await refreshAndTrack(evaluationId).catch(() => undefined)
-  if (activeRun.value) startPolling(evaluationId)
+  if (generation === pollGeneration && activeRun.value && store.evaluation?.id === evaluationId) {
+    startPolling(evaluationId)
+  }
 })
 
 onUnmounted(stopPolling)
@@ -117,7 +132,8 @@ function delta(value: number) {
 
 function attemptStatus(result: EvaluationSample['variantResults'][string]) {
   const attempt = result.attempts?.[0]
-  return attempt?.errorCode ?? attempt?.output?.claims?.[0]?.status ?? '无合法主张'
+  const value = attempt?.errorCode ?? attempt?.output?.claims?.[0]?.status
+  return value ? statusLabel(value) : '无合法主张'
 }
 
 function rawOutput(value: unknown) {
@@ -140,7 +156,7 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
         <h1>管理评测</h1>
         <p class="page-lead">用评测批次保留每次同条件事实，用版本汇总串联历史，用直接对比回答这一版到底改好了什么。</p>
       </div>
-      <span class="gate-chip" :class="store.evaluation?.gateStatus.toLowerCase()">GATE {{ store.evaluation?.gateStatus ?? 'PENDING' }}</span>
+      <span class="gate-chip" :class="store.evaluation?.gateStatus.toLowerCase()">GATE {{ statusLabel(store.evaluation?.gateStatus) }}</span>
     </div>
 
     <nav class="admin-tabs" aria-label="评测视图">
@@ -177,8 +193,8 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
                 <option value="" disabled>请选择候选版</option>
                 <option v-for="item in candidateVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option>
               </select>
-              <button class="primary-action" data-test="start-evaluation" :disabled="!candidateVersionId || store.busy" @click="start">
-                {{ store.busy ? '正在创建评测…' : stableVersionId ? '运行 BASELINE + Stable + Candidate' : '运行 BASELINE + 首个 Candidate' }}
+              <button class="primary-action" data-test="start-evaluation" :disabled="!candidateVersionId || store.creating" @click="start">
+                {{ store.creating ? '正在创建评测…' : stableVersionId ? '运行 BASELINE + Stable + Candidate' : '运行 BASELINE + 首个 Candidate' }}
               </button>
               <p v-if="store.error" class="error-message">{{ store.error }}</p>
             </section>
@@ -208,7 +224,8 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
               <div v-if="store.evaluation?.status === 'COMPLETED'" class="report-links">
                 <a :href="reportUrl(store.evaluation.id, 'markdown')">导出报告 Markdown</a><a :href="reportUrl(store.evaluation.id, 'json')">导出报告 JSON</a>
               </div>
-              <small v-else>{{ store.evaluation?.status ?? '选择一个历史批次' }}</small>
+              <small v-else-if="store.evaluation">{{ statusLabel(store.evaluation.status) }}</small>
+              <small v-else>选择一个历史批次</small>
             </div>
             <div v-if="!metricRows.length" class="empty-results">这里展示每项指标的定义、分子、分母和百分比。</div>
             <div v-else class="metrics-table">
@@ -220,7 +237,7 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
           </section>
 
           <div class="evaluation-bottom-grid">
-            <section class="panel"><div class="panel-heading"><span class="step-index">04</span><div><strong>单样本下钻</strong><small>金标、各变体评分与原始输出</small></div></div><div v-if="!store.samples.length" class="compact-empty">选择完成批次后加载样本。</div><details v-for="sample in store.samples" :key="sample.sampleId" class="sample-drilldown"><summary><code>{{ sample.sampleId }}</code><span>金标 {{ sample.gold?.expectedStatus ?? 'UNKNOWN' }}</span></summary><p>{{ sample.gold?.material?.text ?? '材料文本未写入报告' }}</p><article v-for="[variant, result] in Object.entries(sample.variantResults)" :key="variant" class="sample-variant-result"><code>{{ variant }}</code><strong :class="{ failed: !result.score?.accurate }">{{ result.score?.accurate ? '评分通过' : '评分失败' }}</strong><span>{{ attemptStatus(result) }}</span><small>{{ result.attempts?.[0]?.durationMs ?? 0 }} ms · {{ result.attempts?.length ?? 0 }} 次</small><details class="raw-attempt"><summary>查看原始输出</summary><pre>{{ rawOutput(result.attempts?.[0]?.output) }}</pre></details></article></details></section>
+            <section class="panel"><div class="panel-heading"><span class="step-index">04</span><div><strong>单样本下钻</strong><small>金标、各变体评分与原始输出</small></div></div><div v-if="!store.samples.length" class="compact-empty">选择完成批次后加载样本。</div><details v-for="sample in store.samples" :key="sample.sampleId" class="sample-drilldown"><summary><code>{{ sample.sampleId }}</code><span>金标 {{ statusLabel(sample.gold?.expectedStatus) }}</span></summary><p>{{ sample.gold?.material?.text ?? '材料文本未写入报告' }}</p><article v-for="[variant, result] in Object.entries(sample.variantResults)" :key="variant" class="sample-variant-result"><code>{{ variant }}</code><strong :class="{ failed: !result.score?.accurate }">{{ result.score?.accurate ? '评分通过' : '评分失败' }}</strong><span>{{ attemptStatus(result) }}</span><small>{{ result.attempts?.[0]?.durationMs ?? 0 }} ms · {{ result.attempts?.length ?? 0 }} 次</small><details class="raw-attempt"><summary>查看原始输出</summary><pre>{{ rawOutput(result.attempts?.[0]?.output) }}</pre></details></article></details></section>
             <section class="panel"><div class="panel-heading"><span class="step-index">05</span><div><strong>Candidate 门禁</strong><small>硬检查原始原因</small></div></div><div v-if="!store.evaluation?.gateReasons?.length" class="compact-empty">等待门禁。</div><div v-for="check in store.evaluation?.gateReasons ?? []" :key="check.name" class="gate-row"><i :class="{ passed: check.passed }"></i><div><strong>{{ check.name }}</strong><small>{{ check.reason }}</small></div></div></section>
           </div>
         </div>
@@ -247,7 +264,7 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
         <div v-if="!store.comparison.comparable" class="comparison-warning"><strong>暂无共同评测</strong><span v-for="reason in store.comparison.reasons" :key="reason">{{ reason }}</span></div>
         <template v-else>
           <p class="page-lead">共同评测批次 <code>{{ store.comparison.evaluationRunId }}</code></p>
-          <div class="delta-grid"><div v-for="(value, key) in store.comparison.metricDeltas" :key="key"><small>{{ key }}</small><strong :class="{ positive: value > 0, negative: value < 0 }">{{ delta(value) }}</strong></div></div>
+          <div class="delta-grid"><div v-for="(value, key) in store.comparison.metricDeltas" :key="key"><small>{{ metricLabel(key) }}</small><strong :class="{ positive: value > 0, negative: value < 0 }">{{ delta(value) }}</strong></div></div>
           <div class="summary-strip"><div><small>目标版胜</small><strong>{{ store.comparison.sampleOutcomes.rightWins ?? 0 }}</strong></div><div><small>基准版胜</small><strong>{{ store.comparison.sampleOutcomes.leftWins ?? 0 }}</strong></div><div><small>持平</small><strong>{{ store.comparison.sampleOutcomes.ties ?? 0 }}</strong></div></div>
         </template>
       </template>

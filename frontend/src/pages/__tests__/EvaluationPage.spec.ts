@@ -45,6 +45,21 @@ function evaluationRouter() {
   })
 }
 
+function deferred<T>() {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>((resolvePromise) => {
+    resolve = resolvePromise
+  })
+  return { promise, resolve }
+}
+
+function response(body: unknown): Response {
+  return {
+    ok: true,
+    json: async () => body,
+  } as Response
+}
+
 describe('EvaluationPage', () => {
   beforeEach(() => {
     setActivePinia(createPinia())
@@ -131,9 +146,10 @@ describe('EvaluationPage', () => {
     expect(wrapper.text()).toContain('稳定性')
     expect(wrapper.text()).toContain('人工介入率')
     expect(wrapper.text()).toContain('iflytek-basic')
-    expect(wrapper.text()).toContain('金标 VERIFIED')
+    expect(wrapper.text()).toContain('金标 已核验（VERIFIED）')
     expect(wrapper.text()).toContain('BASELINE')
-    expect(wrapper.text()).toContain('CONFLICT')
+    expect(wrapper.text()).toContain('存在冲突（CONFLICT）')
+    expect(wrapper.text()).toContain('GATE 通过（PASS）')
     expect(wrapper.text()).toContain('评分失败')
     expect(wrapper.text()).toContain('导出报告')
   })
@@ -194,6 +210,44 @@ describe('EvaluationPage', () => {
     expect(wrapper.find('[data-test="evaluation-tab-version"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="evaluation-tab-compare"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('历史评测')
+  })
+
+  it('辅助数据仍在加载时立即按 URL 刷新评测', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = evaluationRouter()
+    await router.push('/admin/evaluations?evaluationId=evaluation-from-url')
+    await router.isReady()
+    const store = useEvaluationStore()
+    const skillStore = useSkillStore()
+    const versions = deferred<void>()
+    const history = deferred<void>()
+    vi.spyOn(skillStore, 'load').mockReturnValue(versions.promise)
+    vi.spyOn(store, 'loadHistory').mockReturnValue(history.promise)
+    const refresh = vi.spyOn(store, 'refreshEvaluation').mockResolvedValue()
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia, router] } })
+    await Promise.resolve()
+
+    expect(refresh).toHaveBeenCalledWith('evaluation-from-url')
+
+    versions.resolve()
+    history.resolve()
+    wrapper.unmount()
+  })
+
+  it('刷新状态不会让创建按钮误显示创建中', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useEvaluationStore()
+    const skillStore = useSkillStore()
+    skillStore.versions = [version('candidate-v1', 'CANDIDATE')]
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+    store.busy = true
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia] } })
+
+    await wrapper.get('[data-test="candidate-version"]').setValue('candidate-v1')
+
+    expect(wrapper.get('[data-test="start-evaluation"]').text()).not.toContain('正在创建评测')
   })
 
   it('Stable 和 Candidate 均使用按状态过滤的下拉选项', () => {
@@ -311,5 +365,112 @@ describe('EvaluationPage', () => {
 
     wrapper.unmount()
     vi.useRealTimers()
+  })
+
+  it('慢轮询未完成时不会启动第二个刷新', async () => {
+    vi.useFakeTimers()
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = evaluationRouter()
+    await router.push('/admin/evaluations?evaluationId=evaluation-slow')
+    await router.isReady()
+    const store = useEvaluationStore()
+    const skillStore = useSkillStore()
+    store.evaluation = run('evaluation-slow', 'RUNNING')
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+    vi.spyOn(store, 'loadHistory').mockResolvedValue()
+    const slowRefresh = deferred<void>()
+    const refresh = vi.spyOn(store, 'refreshEvaluation')
+      .mockResolvedValueOnce()
+      .mockReturnValueOnce(slowRefresh.promise)
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia, router] } })
+    await flushPromises()
+
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(refresh).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(refresh).toHaveBeenCalledTimes(2)
+
+    slowRefresh.resolve()
+    await flushPromises()
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('切换评测后晚到的 URL 刷新不会重新轮询旧评测', async () => {
+    vi.useFakeTimers()
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = evaluationRouter()
+    await router.push('/admin/evaluations?evaluationId=evaluation-old')
+    await router.isReady()
+    const store = useEvaluationStore()
+    const skillStore = useSkillStore()
+    store.evaluation = run('evaluation-old', 'RUNNING')
+    store.history = [run('evaluation-new', 'RUNNING')]
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+    vi.spyOn(store, 'loadHistory').mockResolvedValue()
+    const oldRefresh = deferred<void>()
+    const refresh = vi.spyOn(store, 'refreshEvaluation').mockImplementation(async (id) => {
+      if (id === 'evaluation-old') return oldRefresh.promise
+      store.evaluation = run('evaluation-new', 'RUNNING')
+    })
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia, router] } })
+    await Promise.resolve()
+
+    await wrapper.get('.history-row').trigger('click')
+    await flushPromises()
+    oldRefresh.resolve()
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(5_000)
+
+    expect(refresh.mock.calls.filter(([id]) => id === 'evaluation-old')).toHaveLength(1)
+
+    wrapper.unmount()
+    vi.useRealTimers()
+  })
+
+  it('较早评测的慢响应不会覆盖已选择的新评测', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useEvaluationStore()
+    const oldDetail = deferred<Response>()
+    const fetchMock = vi.fn()
+      .mockReturnValueOnce(oldDetail.promise)
+      .mockResolvedValueOnce(response(run('evaluation-new', 'COMPLETED')))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([]))
+    vi.stubGlobal('fetch', fetchMock)
+
+    const oldRequest = store.refreshEvaluation('evaluation-old')
+    const newRequest = store.refreshEvaluation('evaluation-new')
+    await newRequest
+    oldDetail.resolve(response(run('evaluation-old', 'RUNNING')))
+    await oldRequest
+
+    expect(store.evaluation?.id).toBe('evaluation-new')
+    vi.unstubAllGlobals()
+  })
+
+  it('创建评测会取消过期刷新占用的忙碌状态', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useEvaluationStore()
+    const oldDetail = deferred<Response>()
+    vi.stubGlobal('fetch', vi.fn()
+      .mockReturnValueOnce(oldDetail.promise)
+      .mockResolvedValueOnce(response(run('evaluation-created', 'PENDING')))
+      .mockResolvedValueOnce(response([]))
+      .mockResolvedValueOnce(response([])))
+
+    const staleRefresh = store.refreshEvaluation('evaluation-old')
+    await store.start('public-tech-2024-v3', ['BASELINE', 'candidate-v1'])
+
+    expect(store.refreshing).toBe(false)
+    expect(store.busy).toBe(false)
+
+    oldDetail.resolve(response(run('evaluation-old', 'RUNNING')))
+    await staleRefresh
+    vi.unstubAllGlobals()
   })
 })

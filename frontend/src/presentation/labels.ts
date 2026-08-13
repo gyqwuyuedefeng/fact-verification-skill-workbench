@@ -12,6 +12,9 @@ const statusLabels: Record<string, string> = {
   ARCHIVED: '已归档',
   PASS: '通过',
   FAIL: '未通过',
+  VERIFIED: '已核验',
+  CONFLICT: '存在冲突',
+  INSUFFICIENT: '证据不足',
 }
 
 const metricLabels: Record<string, string> = {

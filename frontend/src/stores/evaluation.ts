@@ -27,10 +27,16 @@ export const useEvaluationStore = defineStore('evaluation', {
     versionSummary: null as SkillEvaluationSummary | null,
     comparison: null as EvaluationComparison | null,
     busy: false,
+    creating: false,
+    refreshing: false,
+    refreshGeneration: 0,
     error: null as string | null,
   }),
   actions: {
     async start(datasetVersion: string, variantIds: string[]): Promise<EvaluationRun> {
+      this.refreshGeneration += 1
+      this.refreshing = false
+      this.creating = true
       this.busy = true
       this.error = null
       this.samples = []
@@ -43,16 +49,25 @@ export const useEvaluationStore = defineStore('evaluation', {
         this.error = error instanceof Error ? error.message : '评测创建失败'
         throw error
       } finally {
-        this.busy = false
+        this.creating = false
+        this.busy = this.refreshing
       }
     },
     async refreshEvaluation(evaluationId: string): Promise<void> {
+      const generation = ++this.refreshGeneration
+      this.refreshing = true
       this.busy = true
       try {
-        this.evaluation = await getEvaluation(evaluationId)
-        this.samples = await getEvaluationSamples(evaluationId)
+        const evaluation = await getEvaluation(evaluationId)
+        const samples = await getEvaluationSamples(evaluationId)
+        if (this.refreshGeneration !== generation) return
+        this.evaluation = evaluation
+        this.samples = samples
       } finally {
-        this.busy = false
+        if (this.refreshGeneration === generation) {
+          this.refreshing = false
+          this.busy = this.creating
+        }
       }
     },
     async refresh(): Promise<void> {
