@@ -4,9 +4,9 @@ import com.fasterxml.jackson.core.JsonProcessingException;
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsmap.factverification.shared.ServiceException;
 import com.hsmap.factverification.skill.persistence.SkillVersionRepository;
-import java.util.ArrayList;
 import java.time.OffsetDateTime;
 import java.time.ZoneOffset;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.UUID;
@@ -63,11 +63,13 @@ public class SkillVersionComparisonService {
             summary = summaryClient.summarize(truncate(context.baseContent()), truncate(context.targetContent()));
             modelId = summaryClient.modelId();
         } catch (RuntimeException exception) {
-            return previousOrUnavailable(targetVersionId, baseVersionId, context.diff());
+            return previousOrUnavailable(targetVersionId, baseVersionId, context);
         }
         VersionComparison generated = new VersionComparison(
                 targetVersionId,
                 baseVersionId,
+                context.baseContentHash(),
+                context.targetContentHash(),
                 context.diff(),
                 "COMPLETED",
                 summary,
@@ -92,17 +94,20 @@ public class SkillVersionComparisonService {
     public VersionComparison get(UUID targetVersionId, UUID baseVersionId) {
         ComparisonContext context = context(targetVersionId, baseVersionId);
         Optional<String> saved = findSaved(targetVersionId, baseVersionId);
-        return saved.map(this::parse).orElseGet(() -> new VersionComparison(
-                targetVersionId,
-                baseVersionId,
-                context.diff(),
-                "NOT_GENERATED",
-                null,
-                ADVISORY,
-                null,
-                null,
-                null,
-                false));
+        return saved.map(json -> parseAndValidate(json, targetVersionId, baseVersionId, context))
+                .orElseGet(() -> new VersionComparison(
+                        targetVersionId,
+                        baseVersionId,
+                        context.baseContentHash(),
+                        context.targetContentHash(),
+                        context.diff(),
+                        "NOT_GENERATED",
+                        null,
+                        ADVISORY,
+                        null,
+                        null,
+                        null,
+                        false));
     }
 
     /**
@@ -115,7 +120,12 @@ public class SkillVersionComparisonService {
         SkillVersionRepository.VersionRow base = frozen(baseVersionId);
         String targetContent = content(target);
         String baseContent = content(base);
-        return new ComparisonContext(baseContent, targetContent, lineDiff(baseContent, targetContent));
+        return new ComparisonContext(
+                baseContent,
+                targetContent,
+                base.contentHash(),
+                target.contentHash(),
+                lineDiff(baseContent, targetContent));
     }
 
     /**
@@ -143,13 +153,17 @@ public class SkillVersionComparisonService {
      *
      * <p>旧说明代表已完成的历史生成，故维持其完成状态和生成时间，但为本次请求附加稳定的模型不可用错误码；从未生成时才返回 UNAVAILABLE。
      */
-    private VersionComparison previousOrUnavailable(UUID targetVersionId, UUID baseVersionId, String diff) {
+    private VersionComparison previousOrUnavailable(
+            UUID targetVersionId, UUID baseVersionId, ComparisonContext context) {
         Optional<String> saved = findSaved(targetVersionId, baseVersionId);
         if (saved.isPresent()) {
-            VersionComparison previous = parse(saved.get());
+            VersionComparison previous =
+                    parseAndValidate(saved.get(), targetVersionId, baseVersionId, context);
             return new VersionComparison(
                     previous.targetVersionId(),
                     previous.baseVersionId(),
+                    previous.baseContentHash(),
+                    previous.targetContentHash(),
                     previous.deterministicDiff(),
                     previous.summaryStatus(),
                     previous.generatedSummary(),
@@ -162,7 +176,9 @@ public class SkillVersionComparisonService {
         return new VersionComparison(
                 targetVersionId,
                 baseVersionId,
-                diff,
+                context.baseContentHash(),
+                context.targetContentHash(),
+                context.diff(),
                 "UNAVAILABLE",
                 null,
                 ADVISORY,
@@ -198,11 +214,35 @@ public class SkillVersionComparisonService {
         }
     }
 
+    /**
+     * 核对持久化 DTO 确实属于当前查询的版本对和冻结内容。
+     *
+     * <p>旧结构缺少 hash 时明确按不兼容拒绝；ID 或任一 hash 不一致表示键值损坏或历史内容漂移，不能退化为“仍可展示”的摘要。
+     */
+    private VersionComparison parseAndValidate(
+            String json, UUID targetVersionId, UUID baseVersionId, ComparisonContext context) {
+        VersionComparison comparison = parse(json);
+        if (comparison.baseContentHash() == null || comparison.targetContentHash() == null) {
+            throw new ServiceException(
+                    "SKILL_VERSION_COMPARISON_INCOMPATIBLE", "已保存的升级说明缺少冻结内容识别值，请重新生成");
+        }
+        if (!targetVersionId.equals(comparison.targetVersionId())
+                || !baseVersionId.equals(comparison.baseVersionId())
+                || !context.baseContentHash().equals(comparison.baseContentHash())
+                || !context.targetContentHash().equals(comparison.targetContentHash())) {
+            throw new ServiceException("SKILL_VERSION_COMPARISON_MISMATCH", "已保存的升级说明与当前冻结版本不匹配");
+        }
+        return comparison;
+    }
+
     private SkillVersionRepository.VersionRow frozen(UUID id) {
         SkillVersionRepository.VersionRow value = versions.findVersion(id)
                 .orElseThrow(() -> new ServiceException("SKILL_VERSION_NOT_FOUND", "Skill 版本不存在"));
         if ("DRAFT".equals(value.status())) {
             throw new ServiceException("SKILL_VERSION_NOT_FROZEN", "只有冻结版本可以生成升级说明");
+        }
+        if (value.contentHash() == null || !value.contentHash().matches("[0-9a-f]{64}")) {
+            throw new ServiceException("SKILL_VERSION_CONTENT_HASH_INVALID", "冻结版本内容识别值无效");
         }
         return value;
     }
@@ -243,5 +283,10 @@ public class SkillVersionComparisonService {
     }
 
     /** 生成与读取流程共享的冻结正文和确定性差异，避免同一请求重复读取版本。 */
-    private record ComparisonContext(String baseContent, String targetContent, String diff) {}
+    private record ComparisonContext(
+            String baseContent,
+            String targetContent,
+            String baseContentHash,
+            String targetContentHash,
+            String diff) {}
 }

@@ -18,6 +18,8 @@ function comparison(targetVersionId: string, baseVersionId: string, headline = '
   return {
     targetVersionId,
     baseVersionId,
+    baseContentHash: 'a'.repeat(64),
+    targetContentHash: 'b'.repeat(64),
     deterministicDiff: '-旧规则\n+新规则',
     summaryStatus: 'COMPLETED' as const,
     modelId: 'gpt-5.6',
@@ -293,6 +295,8 @@ describe('SkillLabPage', () => {
     store.comparison = {
       targetVersionId: 'candidate-2',
       baseVersionId: 'stable-1',
+      baseContentHash: 'a'.repeat(64),
+      targetContentHash: 'b'.repeat(64),
       deterministicDiff: '-旧规则\n+新规则：金额统一转元',
       summaryStatus: 'COMPLETED',
       modelId: 'gpt-5.6',

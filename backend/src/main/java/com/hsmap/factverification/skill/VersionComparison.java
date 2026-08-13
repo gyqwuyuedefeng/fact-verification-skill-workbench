@@ -11,6 +11,8 @@ import java.util.UUID;
 public record VersionComparison(
         UUID targetVersionId,
         UUID baseVersionId,
+        String baseContentHash,
+        String targetContentHash,
         String deterministicDiff,
         String summaryStatus,
         GeneratedChangeSummary generatedSummary,

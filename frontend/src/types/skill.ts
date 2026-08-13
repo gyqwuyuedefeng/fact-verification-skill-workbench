@@ -52,6 +52,8 @@ export interface GeneratedChangeSummary {
 export interface VersionComparison {
   targetVersionId: string
   baseVersionId: string
+  baseContentHash: string
+  targetContentHash: string
   deterministicDiff: string
   summaryStatus: 'NOT_GENERATED' | 'COMPLETED' | 'UNAVAILABLE'
   modelId: string | null

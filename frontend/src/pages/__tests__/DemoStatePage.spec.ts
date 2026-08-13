@@ -108,6 +108,30 @@ describe('DemoStatePage', () => {
     const input = wrapper.get('[data-test="snapshot-file"]')
     expect(input.attributes('accept')).toBe('.zip,application/zip')
     expect(wrapper.get('[data-test="import-snapshot"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.get('[data-test="import-builtin"]').attributes('disabled')).toBeDefined()
+    expect(wrapper.text()).toContain('请先清空')
+  })
+
+  it('内置演示仅在严格空状态可用，并发送安全随机幂等键', async () => {
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(response(state()))
+      .mockResolvedValueOnce(response(state({ ...tableCounts, skill_version: 4 })))
+      .mockResolvedValueOnce(response(state({ ...tableCounts, skill_version: 4 })))
+    vi.stubGlobal('fetch', fetchMock)
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mountPage()
+    await vi.waitFor(() => expect(useDemoStore().busy).toBe(false))
+
+    expect(wrapper.get('[data-test="import-builtin"]').attributes('disabled')).toBeUndefined()
+    await wrapper.get('[data-test="import-builtin"]').trigger('click')
+    await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
+
+    const [, init] = fetchMock.mock.calls[1] ?? []
+    expect(init).toMatchObject({ method: 'POST' })
+    expect(init?.headers).toMatchObject({
+      'X-Confirmation-Phrase': '导入内置演示数据',
+      'Idempotency-Key': expect.stringMatching(/^demo-import-builtin-[A-Za-z0-9-]{20,}$/),
+    })
   })
 
   it.each([

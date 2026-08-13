@@ -92,7 +92,7 @@ describe('ReleaseWorkflow', () => {
     expect(wrapper.text()).toContain('影子真实材料没有金标，不计算准确率')
   })
 
-  it('只允许为候选版选择已完成、人工通过且包含该候选版的评测，并展示中文状态', async () => {
+  it('只允许为候选版选择已完成、门禁通过且包含当前 Stable 的精确评测，并展示中文状态', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const release = useReleaseStore()
@@ -117,9 +117,12 @@ describe('ReleaseWorkflow', () => {
       },
     ]
     evaluations.history = [
-      evaluation('pass-related', 'COMPLETED', 'PASS', ['BASELINE', 'candidate-1']),
-      evaluation('fail-related', 'COMPLETED', 'FAIL', ['BASELINE', 'candidate-1']),
-      evaluation('pass-unrelated', 'COMPLETED', 'PASS', ['BASELINE', 'candidate-2']),
+      evaluation('pass-related', 'COMPLETED', 'PASS', ['BASELINE', 'stable-1', 'candidate-1']),
+      evaluation('missing-stable', 'COMPLETED', 'PASS', ['BASELINE', 'candidate-1']),
+      evaluation('non-current-stable', 'COMPLETED', 'PASS', ['BASELINE', 'stable-old', 'candidate-1']),
+      evaluation('extra-variant', 'COMPLETED', 'PASS', ['BASELINE', 'stable-1', 'extra', 'candidate-1']),
+      evaluation('fail-related', 'COMPLETED', 'FAIL', ['BASELINE', 'stable-1', 'candidate-1']),
+      evaluation('pass-unrelated', 'COMPLETED', 'PASS', ['BASELINE', 'stable-1', 'candidate-2']),
     ]
 
     const wrapper = mount(ReleasePage, { global: { plugins: [pinia] } })
@@ -133,7 +136,11 @@ describe('ReleaseWorkflow', () => {
     await candidateSelect.setValue('candidate-1')
     const evaluationSelect = wrapper.get('[data-test="release-evaluation-run"]')
     expect(evaluationSelect.text()).toContain('pass-related')
-    expect(evaluationSelect.text()).toContain('人工通过（PASS）')
+    expect(evaluationSelect.text()).toContain('门禁通过（PASS）')
+    expect(evaluationSelect.text()).not.toContain('人工通过（PASS）')
+    expect(evaluationSelect.text()).not.toContain('missing-stable')
+    expect(evaluationSelect.text()).not.toContain('non-current-stable')
+    expect(evaluationSelect.text()).not.toContain('extra-variant')
     expect(evaluationSelect.text()).not.toContain('fail-related')
     expect(evaluationSelect.text()).not.toContain('pass-unrelated')
 

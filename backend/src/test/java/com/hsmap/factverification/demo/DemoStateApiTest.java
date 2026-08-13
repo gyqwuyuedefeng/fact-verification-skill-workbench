@@ -2,6 +2,7 @@ package com.hsmap.factverification.demo;
 
 import static org.mockito.ArgumentMatchers.eq;
 import static org.mockito.Mockito.mock;
+import static org.mockito.Mockito.times;
 import static org.mockito.Mockito.verify;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.asyncDispatch;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -34,6 +35,7 @@ class DemoStateApiTest {
     private SnapshotArchiveService snapshots;
     private SkillPresetService presets;
     private BuiltinDemoFixtureService builtinFixture;
+    private DemoImportIdempotency importIdempotency;
     private MockMvc mvc;
 
     /** 初始化控制器的独立 HTTP 测试环境，避免条件装配测试依赖完整 Web 应用。 */
@@ -43,7 +45,29 @@ class DemoStateApiTest {
         snapshots = mock(SnapshotArchiveService.class);
         presets = mock(SkillPresetService.class);
         builtinFixture = mock(BuiltinDemoFixtureService.class);
-        mvc = MockMvcBuilders.standaloneSetup(new DemoStateController(service, snapshots, presets, builtinFixture))
+        importIdempotency = new DemoImportIdempotency();
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    String phrase = invocation.getArgument(0);
+                    if (!"导入快照".equals(phrase)) {
+                        throw new com.hsmap.factverification.shared.ServiceException(
+                                "DEMO_SNAPSHOT_CONFIRMATION_INVALID", "确认短语必须为“导入快照”");
+                    }
+                    return null;
+                })
+                .when(service)
+                .requireImportConfirmationPhrase(org.mockito.ArgumentMatchers.anyString());
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    String phrase = invocation.getArgument(0);
+                    if (!"导入内置演示数据".equals(phrase)) {
+                        throw new com.hsmap.factverification.shared.ServiceException(
+                                "DEMO_BUILTIN_CONFIRMATION_INVALID", "确认短语必须为“导入内置演示数据”");
+                    }
+                    return null;
+                })
+                .when(service)
+                .requireBuiltinImportConfirmationPhrase(org.mockito.ArgumentMatchers.anyString());
+        mvc = MockMvcBuilders.standaloneSetup(
+                        new DemoStateController(service, snapshots, presets, builtinFixture, importIdempotency))
                 .setControllerAdvice(new ApiExceptionHandler())
                 .build();
     }
@@ -140,6 +164,7 @@ class DemoStateApiTest {
 
         byte[] requestBody = "raw-zip".getBytes(java.nio.charset.StandardCharsets.UTF_8);
         mvc.perform(post("/api/admin/demo-state/import")
+                        .header("Idempotency-Key", "demo-import-001")
                         .header("X-Confirmation-Phrase", "导入快照")
                         .contentType("application/zip")
                         .content(requestBody))
@@ -173,10 +198,82 @@ class DemoStateApiTest {
                 .andExpect(org.springframework.test.web.servlet.result.MockMvcResultMatchers.jsonPath("$[2].id")
                         .value("03-regression"));
         mvc.perform(post("/api/admin/demo-state/import-builtin")
+                        .header("Idempotency-Key", "demo-import-builtin-001")
                         .header("X-Confirmation-Phrase", "导入内置演示数据"))
                 .andExpect(status().isOk());
 
         verify(builtinFixture).importBuiltin("导入内置演示数据");
+    }
+
+    /**
+     * 测试场景：两个导入 POST 缺少或携带非法 Idempotency-Key。
+     * 前置条件：确认短语和请求体均合法，排除其他 HTTP 合同错误。
+     * 期望结果：请求在调用快照或 fixture 服务前返回 4xx。
+     * 断言重点：两个导入端点必须同时复用 RequestId 的 8–80 位安全字符校验。
+     */
+    @Test
+    void requiresValidIdempotencyKeyForBothImportPosts() throws Exception {
+        mvc.perform(post("/api/admin/demo-state/import")
+                        .header("X-Confirmation-Phrase", "导入快照")
+                        .contentType("application/zip")
+                        .content("zip"))
+                .andExpect(status().is4xxClientError());
+        mvc.perform(post("/api/admin/demo-state/import-builtin")
+                        .header("Idempotency-Key", "bad key")
+                        .header("X-Confirmation-Phrase", "导入内置演示数据"))
+                .andExpect(status().is4xxClientError());
+
+        org.mockito.Mockito.verifyNoInteractions(snapshots, builtinFixture);
+    }
+
+    /**
+     * 测试场景：自定义导入成功后以同键重试，并再次携带错误确认短语探测缓存绕过。
+     * 前置条件：服务状态为固定脱敏对象，原始 ZIP 字节不访问真实数据。
+     * 期望结果：合法重试返回首次结果且只导入一次；错误确认语即使命中历史键也返回 4xx。
+     * 断言重点：确认语必须在读取幂等 Future 前逐次校验。
+     */
+    @Test
+    void retriesSnapshotImportOnceButNeverCachesConfirmationAuthorization() throws Exception {
+        org.mockito.Mockito.when(service.status()).thenReturn(new DemoStateView(Map.of(), Map.of()));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(post("/api/admin/demo-state/import")
+                            .header("Idempotency-Key", "snapshot-retry-001")
+                            .header("X-Confirmation-Phrase", "导入快照")
+                            .contentType("application/zip")
+                            .content("zip"))
+                    .andExpect(status().isOk());
+        }
+        mvc.perform(post("/api/admin/demo-state/import")
+                        .header("Idempotency-Key", "snapshot-retry-001")
+                        .header("X-Confirmation-Phrase", "错误确认语")
+                        .contentType("application/zip")
+                        .content("zip"))
+                .andExpect(status().is4xxClientError());
+
+        verify(snapshots, times(1)).importFrom(org.mockito.ArgumentMatchers.any(), eq("导入快照"));
+    }
+
+    /**
+     * 测试场景：内置导入成功后以同键重试，并再次携带错误确认短语探测缓存绕过。
+     * 前置条件：fixture 与状态服务均为不触碰真实数据的 Mock。
+     * 期望结果：合法重试只调用一次 fixture；错误确认语即使命中同一历史键也返回 4xx。
+     * 断言重点：两个导入 POST 都把确认语作为逐次请求授权，而不是幂等缓存身份的一部分。
+     */
+    @Test
+    void retriesBuiltinImportOnceButNeverCachesConfirmationAuthorization() throws Exception {
+        org.mockito.Mockito.when(service.status()).thenReturn(new DemoStateView(Map.of(), Map.of()));
+        for (int attempt = 0; attempt < 2; attempt++) {
+            mvc.perform(post("/api/admin/demo-state/import-builtin")
+                            .header("Idempotency-Key", "builtin-retry-001")
+                            .header("X-Confirmation-Phrase", "导入内置演示数据"))
+                    .andExpect(status().isOk());
+        }
+        mvc.perform(post("/api/admin/demo-state/import-builtin")
+                        .header("Idempotency-Key", "builtin-retry-001")
+                        .header("X-Confirmation-Phrase", "错误确认语"))
+                .andExpect(status().is4xxClientError());
+
+        verify(builtinFixture, times(1)).importBuiltin("导入内置演示数据");
     }
 
     /**
@@ -223,6 +320,7 @@ class DemoStateApiTest {
                 .withBean(SnapshotArchiveService.class, () -> mock(SnapshotArchiveService.class))
                 .withBean(SkillPresetService.class, () -> mock(SkillPresetService.class))
                 .withBean(BuiltinDemoFixtureService.class, () -> mock(BuiltinDemoFixtureService.class))
+                .withBean(DemoImportIdempotency.class, DemoImportIdempotency::new)
                 .withInitializer(context -> context.getEnvironment().setActiveProfiles(profile))
                 .withPropertyValues("workbench.demo-admin.enabled=" + enabled);
     }

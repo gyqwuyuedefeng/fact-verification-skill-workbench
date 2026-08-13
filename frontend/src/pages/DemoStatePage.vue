@@ -131,9 +131,10 @@ async function exportSnapshot() {
           <div><strong>快速导入内置状态查看完整结果</strong><small>适合快速查看完整评测、门禁和发布链路</small></div>
         </div>
         <p class="notice-copy">内置导入使用固定脱敏数据，不是本次现场重新生成。</p>
-        <button class="primary-action" :disabled="store.busy" @click="importBuiltin">
+        <button class="primary-action" data-test="import-builtin" :disabled="store.busy || !store.isBlank" @click="importBuiltin">
           {{ store.busy ? '正在导入…' : '导入固定脱敏内置状态' }}
         </button>
+        <small v-if="!store.isBlank" class="destructive-hint">当前状态非空或状态合同无效，请先清空并刷新状态。</small>
       </section>
     </div>
 

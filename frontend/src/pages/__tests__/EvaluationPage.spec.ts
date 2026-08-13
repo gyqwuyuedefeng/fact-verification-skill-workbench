@@ -172,7 +172,8 @@ describe('EvaluationPage', () => {
     expect(wrapper.text()).toContain('候选版（CANDIDATE）')
     expect(wrapper.text()).toContain('基线（BASELINE）')
 
-    await wrapper.find('[data-test="stable-version"]').setValue('stable-v1')
+    expect((wrapper.get('[data-test="stable-version"]').element as HTMLSelectElement).value).toBe('stable-v1')
+    expect(wrapper.get('[data-test="stable-version"]').text()).not.toContain('首次建立')
     await wrapper.find('[data-test="candidate-version"]').setValue('candidate-v2')
     await wrapper.find('[data-test="start-evaluation"]').trigger('click')
     await flushPromises()
@@ -275,6 +276,22 @@ describe('EvaluationPage', () => {
     expect(stable.text()).not.toContain('candidate-v2')
     expect(candidate.text()).toContain('candidate-v2')
     expect(candidate.text()).not.toContain('draft-v3')
+  })
+
+  it('已有 Stable 时自动固定唯一正式版且不能以空选项绕过', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const skillStore = useSkillStore()
+    skillStore.versions = [version('stable-current', 'STABLE'), version('candidate-next', 'CANDIDATE')]
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia] } })
+
+    const stable = wrapper.get<HTMLSelectElement>('[data-test="stable-version"]')
+    expect(stable.element.value).toBe('stable-current')
+    expect(stable.text()).not.toContain('首次建立稳定版')
+
+    await wrapper.get('[data-test="candidate-version"]').setValue('candidate-next')
+    expect(wrapper.get('[data-test="start-evaluation"]').attributes('disabled')).toBeUndefined()
   })
 
   it('版本汇总排除 DRAFT，且没有共同评测的冻结版本仍可选择', async () => {

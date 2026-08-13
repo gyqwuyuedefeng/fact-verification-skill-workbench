@@ -159,6 +159,8 @@ class SkillVersionComparisonServiceTest {
         return new VersionComparison(
                 targetId,
                 baseId,
+                "a".repeat(64),
+                "a".repeat(64),
                 "-旧规则\n+新规则：金额统一转元",
                 "COMPLETED",
                 new GeneratedChangeSummary("强化单位归一化", java.util.List.of("万元统一转元"), java.util.List.of("注意历史报表单位")),

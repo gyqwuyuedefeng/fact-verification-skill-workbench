@@ -56,7 +56,10 @@ export function importSnapshot(file: File): Promise<DemoState> {
 export function importBuiltinDemoState(): Promise<DemoState> {
   return request(`${root}/import-builtin`, {
     method: 'POST',
-    headers: { 'X-Confirmation-Phrase': '导入内置演示数据' },
+    headers: {
+      'Idempotency-Key': requestId('demo-import-builtin'),
+      'X-Confirmation-Phrase': '导入内置演示数据',
+    },
   })
 }
 

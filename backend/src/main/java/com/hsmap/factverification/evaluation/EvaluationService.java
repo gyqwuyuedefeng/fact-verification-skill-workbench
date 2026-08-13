@@ -334,25 +334,66 @@ public final class EvaluationService implements EvaluationUseCase {
     }
 
     private List<AgentVariant> resolveVariants(List<String> identifiers) {
-        if (identifiers == null || identifiers.size() < 2 || !"BASELINE".equals(identifiers.get(0))) {
-            throw new ServiceException("EVALUATION_VARIANTS_INVALID", "评测必须以 BASELINE 开始并包含冻结 Skill");
+        SkillVersionRepository.VersionRow currentStable = currentStable();
+        int expectedSize = currentStable == null ? 2 : 3;
+        if (identifiers == null
+                || identifiers.size() != expectedSize
+                || !"BASELINE".equals(identifiers.get(0))
+                || (currentStable != null && !currentStable.id().toString().equals(identifiers.get(1)))) {
+            throw invalidVariants(currentStable != null);
         }
         List<AgentVariant> variants = new ArrayList<>();
         variants.add(AgentVariant.baseline(hasher.hash(AgentVariant.BASELINE_INSTRUCTION)));
-        for (String identifier : identifiers.subList(1, identifiers.size())) {
-            UUID id;
-            try {
-                id = UUID.fromString(identifier);
-            } catch (IllegalArgumentException exception) {
-                throw new ServiceException("SKILL_VERSION_ID_INVALID", "参评 Skill 版本 ID 格式无效");
-            }
-            SkillVersionRepository.FrozenVersion version = skillVersions
-                    .findFrozen(id)
-                    .orElseThrow(() -> new ServiceException("SKILL_VERSION_NOT_FROZEN", "参评 Skill 必须是冻结版本"));
-            Path runtimeRoot = properties.storageRoot().resolve("skill-runtime").resolve(id.toString());
-            variants.add(AgentVariant.skill(id.toString(), version.contentHash(), runtimeRoot));
+        if (currentStable != null) {
+            variants.add(resolveVariant(identifiers.get(1), "STABLE", true));
         }
+        variants.add(resolveVariant(identifiers.get(identifiers.size() - 1), "CANDIDATE", currentStable != null));
         return List.copyOf(variants);
+    }
+
+    /**
+     * 从生命周期列表确定唯一当前 Stable。
+     *
+     * <p>单 Skill MVP 允许零个或一个 Stable；若持久化状态已经出现多个 Stable，创建评测必须失败关闭，不能任意选择其中一个作为门禁基准。
+     */
+    private SkillVersionRepository.VersionRow currentStable() {
+        List<SkillVersionRepository.VersionRow> stableVersions = skillVersions.listVersions().stream()
+                .filter(version -> "STABLE".equals(version.status()))
+                .toList();
+        if (stableVersions.size() > 1) {
+            throw new ServiceException("EVALUATION_VARIANTS_INVALID", "当前 Stable 状态异常，不能创建评测");
+        }
+        return stableVersions.isEmpty() ? null : stableVersions.get(0);
+    }
+
+    /**
+     * 按固定位置解析冻结版本并核对生命周期角色。
+     *
+     * <p>“已冻结”只能证明内容不可变，不能证明它是当前 Stable 或待评测 Candidate；因此这里还必须核对状态和当前 Stable 标识。
+     */
+    private AgentVariant resolveVariant(String identifier, String expectedStatus, boolean stableExists) {
+        UUID id;
+        try {
+            id = UUID.fromString(identifier);
+        } catch (IllegalArgumentException exception) {
+            throw invalidVariants(stableExists);
+        }
+        SkillVersionRepository.FrozenVersion version = skillVersions
+                .findFrozen(id)
+                .orElseThrow(() -> invalidVariants(stableExists));
+        if (!expectedStatus.equals(version.status())) {
+            throw invalidVariants(stableExists);
+        }
+        Path runtimeRoot = properties.storageRoot().resolve("skill-runtime").resolve(id.toString());
+        return AgentVariant.skill(id.toString(), version.contentHash(), runtimeRoot);
+    }
+
+    /** 返回不暴露版本 ID 的稳定合同错误；消息明确区分首次建版与已有 Stable 两种固定组成。 */
+    private static ServiceException invalidVariants(boolean stableExists) {
+        String expected = stableExists
+                ? "已有 Stable 时评测必须且只能包含 BASELINE、当前 Stable、Candidate"
+                : "首次建版评测必须且只能包含 BASELINE、Candidate";
+        return new ServiceException("EVALUATION_VARIANTS_INVALID", expected);
     }
 
     private String outputSchemaHash() {

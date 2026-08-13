@@ -24,11 +24,21 @@ onMounted(() => {
 })
 
 const candidateVersions = computed(() => skillStore.versions.filter((version) => version.status === 'CANDIDATE'))
+const stableVersions = computed(() => skillStore.versions.filter((version) => version.status === 'STABLE'))
 const eligibleEvaluations = computed(() => evaluationStore.history.filter((run) =>
   run.status === 'COMPLETED' &&
   run.gateStatus === 'PASS' &&
-  (run.variants ?? []).some((variant) => variant.identifier === candidateVersionId.value),
+  hasExactReleaseVariants(run.variants?.map((variant) => variant.identifier) ?? []),
 ))
+
+/** 发布下拉复现后端创建合同：首版只允许两变体，已有唯一 Stable 时必须按固定顺序恰好三变体。 */
+function hasExactReleaseVariants(identifiers: string[]): boolean {
+  if (!candidateVersionId.value || stableVersions.value.length > 1) return false
+  const expected = stableVersions.value.length === 1
+    ? ['BASELINE', stableVersions.value[0]!.id, candidateVersionId.value]
+    : ['BASELINE', candidateVersionId.value]
+  return identifiers.length === expected.length && identifiers.every((value, index) => value === expected[index])
+}
 
 /** 切换候选版后，旧评测不再属于当前关联范围，必须重新选择。 */
 watch(candidateVersionId, () => {
@@ -88,7 +98,7 @@ function formatTime(value: string) {
         <label class="field-label" for="release-evaluation-run">已通过门禁的评测</label>
         <select id="release-evaluation-run" v-model="evaluationRunId" class="text-input" data-test="release-evaluation-run" :disabled="!candidateVersionId">
           <option value="">请选择评测</option>
-          <option v-for="run in eligibleEvaluations" :key="run.id" :value="run.id">{{ run.id }} · {{ statusLabel(run.status) }} · 人工{{ statusLabel(run.gateStatus) }}</option>
+          <option v-for="run in eligibleEvaluations" :key="run.id" :value="run.id">{{ run.id }} · {{ statusLabel(run.status) }} · 门禁通过（PASS）</option>
         </select>
         <label class="field-label">操作原因</label><input v-model="reason" class="text-input" maxlength="1000" />
         <div class="editor-actions release-actions">

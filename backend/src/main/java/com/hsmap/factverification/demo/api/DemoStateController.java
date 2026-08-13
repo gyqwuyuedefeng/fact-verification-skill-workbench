@@ -1,12 +1,14 @@
 package com.hsmap.factverification.demo.api;
 
+import com.hsmap.factverification.demo.BuiltinDemoFixtureService;
+import com.hsmap.factverification.demo.DemoImportIdempotency;
 import com.hsmap.factverification.demo.DemoStateService;
 import com.hsmap.factverification.demo.DemoStateView;
-import com.hsmap.factverification.demo.BuiltinDemoFixtureService;
 import com.hsmap.factverification.demo.SnapshotArchiveService;
 import com.hsmap.factverification.demo.SkillPresetService;
 import com.hsmap.factverification.demo.StaleRecoveryView;
 import com.hsmap.factverification.shared.RequestId;
+import com.hsmap.factverification.shared.ServiceException;
 import jakarta.servlet.http.HttpServletRequest;
 import jakarta.validation.Valid;
 import jakarta.validation.constraints.NotBlank;
@@ -42,17 +44,20 @@ public class DemoStateController {
     private final SnapshotArchiveService snapshots;
     private final SkillPresetService presets;
     private final BuiltinDemoFixtureService builtinFixture;
+    private final DemoImportIdempotency importIdempotency;
 
     /** 注入演示状态、快照和固定 fixture 服务；控制器只处理 HTTP 合同，不直接访问 JDBC 或文件系统。 */
     public DemoStateController(
             DemoStateService service,
             SnapshotArchiveService snapshots,
             SkillPresetService presets,
-            BuiltinDemoFixtureService builtinFixture) {
+            BuiltinDemoFixtureService builtinFixture,
+            DemoImportIdempotency importIdempotency) {
         this.service = service;
         this.snapshots = snapshots;
         this.presets = presets;
         this.builtinFixture = builtinFixture;
+        this.importIdempotency = importIdempotency;
     }
 
     /** 返回七张业务表计数和三个受管运行目录是否为空的脱敏状态。 */
@@ -104,10 +109,17 @@ public class DemoStateController {
      */
     @PostMapping(value = "/import", consumes = "application/zip")
     public DemoStateView importSnapshot(
-            @RequestHeader("X-Confirmation-Phrase") String confirmationPhrase, HttpServletRequest request)
-            throws IOException {
-        snapshots.importFrom(request.getInputStream(), exactUtf8HeaderPhrase(confirmationPhrase, "导入快照"));
-        return service.status();
+            @RequestHeader("Idempotency-Key") String requestId,
+            @RequestHeader("X-Confirmation-Phrase") String confirmationPhrase,
+            HttpServletRequest request) {
+        String validRequestId = RequestId.requireValid(requestId);
+        String exactConfirmation = exactUtf8HeaderPhrase(confirmationPhrase, "导入快照");
+        // 确认语属于每次请求的授权边界，必须先于历史 Future 查询，不能被同键成功结果绕过。
+        service.requireImportConfirmationPhrase(exactConfirmation);
+        return importIdempotency.execute(
+                DemoImportIdempotency.Operation.SNAPSHOT,
+                validRequestId,
+                () -> importSnapshotOnce(request, exactConfirmation));
     }
 
     /** 返回三套完整 Skill Markdown/references；业务顺序由预置服务固定，HTTP 不接受任意路径或 preset id。 */
@@ -118,9 +130,31 @@ public class DemoStateController {
 
     /** 使用专用确认短语从空状态恢复固定脱敏 fixture，并返回 Task 4 既有状态投影。 */
     @PostMapping("/import-builtin")
-    public DemoStateView importBuiltin(@RequestHeader("X-Confirmation-Phrase") String confirmationPhrase) {
-        builtinFixture.importBuiltin(exactUtf8HeaderPhrase(confirmationPhrase, "导入内置演示数据"));
-        return service.status();
+    public DemoStateView importBuiltin(
+            @RequestHeader("Idempotency-Key") String requestId,
+            @RequestHeader("X-Confirmation-Phrase") String confirmationPhrase) {
+        String validRequestId = RequestId.requireValid(requestId);
+        String exactConfirmation = exactUtf8HeaderPhrase(confirmationPhrase, "导入内置演示数据");
+        // 与自定义导入一致，确认语必须逐次校验；操作类型由协调器作为复合键的一部分隔离。
+        service.requireBuiltinImportConfirmationPhrase(exactConfirmation);
+        return importIdempotency.execute(DemoImportIdempotency.Operation.BUILTIN, validRequestId, () -> {
+            builtinFixture.importBuiltin(exactConfirmation);
+            return service.status();
+        });
+    }
+
+    /**
+     * 只由首次幂等请求取得 Servlet 输入流并执行导入。
+     *
+     * <p>成功后的同键重试直接恢复首次 Future，不再触碰可能已经不可读的重试请求体；真正的流式落盘仍由快照服务在管理写锁外完成。
+     */
+    private DemoStateView importSnapshotOnce(HttpServletRequest request, String confirmationPhrase) {
+        try {
+            snapshots.importFrom(request.getInputStream(), confirmationPhrase);
+            return service.status();
+        } catch (IOException exception) {
+            throw new ServiceException("DEMO_SNAPSHOT_IMPORT_FAILED", "比赛状态快照导入失败");
+        }
     }
 
     /**

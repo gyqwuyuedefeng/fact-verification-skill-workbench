@@ -208,6 +208,8 @@ class SkillVersionApiTest {
         return new VersionComparison(
                 targetId,
                 baseId,
+                "a".repeat(64),
+                "b".repeat(64),
                 "-旧规则\n+新规则",
                 "COMPLETED",
                 new GeneratedChangeSummary("强化单位归一化", List.of("金额统一"), List.of()),

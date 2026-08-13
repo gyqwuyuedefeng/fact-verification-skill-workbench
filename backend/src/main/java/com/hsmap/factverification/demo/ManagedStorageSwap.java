@@ -327,6 +327,16 @@ public class ManagedStorageSwap {
      * toRealPath(NOFOLLOW_LINKS) 冻结本次调用的物理根。MOVE 与 COPY_VERIFY 共用此门禁，避免策略分支产生不同路径边界。
      */
     private Path requireSafeStorageRoot(boolean createIfMissing) throws IOException {
+        return requireSafeStorageRoot(storageRoot, createIfMissing);
+    }
+
+    /**
+     * 为快照与目录交换共享同一套 storageRoot 物理根门禁。
+     *
+     * <p>调用方必须在创建任何暂存目录或读取受管文件前取得返回值，并在本次操作内固定使用该物理根；方法不会跟随任何已存在祖先链接。
+     */
+    static Path requireSafeStorageRoot(Path configuredRoot, boolean createIfMissing) throws IOException {
+        Path storageRoot = configuredRoot.toAbsolutePath().normalize();
         List<Path> missing = new ArrayList<>();
         Path current = storageRoot;
         while (current != null) {

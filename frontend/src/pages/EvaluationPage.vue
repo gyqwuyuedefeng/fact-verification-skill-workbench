@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { routeLocationKey, routerKey } from 'vue-router'
 
 import { reportUrl } from '../api/evaluation'
@@ -27,6 +27,15 @@ const stableVersions = computed(() => skillStore.versions.filter((item) => item.
 const candidateVersions = computed(() => skillStore.versions.filter((item) => item.status === 'CANDIDATE'))
 const frozenVersions = computed(() => skillStore.versions.filter((item) => item.status !== 'DRAFT'))
 const activeRun = computed(() => ['PENDING', 'RUNNING'].includes(store.evaluation?.status ?? ''))
+const stableContractValid = computed(() => stableVersions.value.length <= 1)
+const canStart = computed(() => Boolean(candidateVersionId.value)
+  && stableContractValid.value
+  && (stableVersions.value.length === 0 || stableVersionId.value === stableVersions.value[0]?.id))
+
+/** 当前生命周期只有唯一 Stable 时立即固定选择；零个 Stable 保留首次建版，两条以上则失败关闭创建按钮。 */
+watch(stableVersions, (versions) => {
+  stableVersionId.value = versions.length === 1 ? versions[0]!.id : ''
+}, { immediate: true })
 
 const metricRows = computed(() => Object.entries(store.evaluation?.metrics ?? {}))
 const modelParameters = computed(() => {
@@ -37,7 +46,7 @@ const modelParameters = computed(() => {
 })
 
 async function start() {
-  if (!candidateVersionId.value || store.creating) return
+  if (!canStart.value || store.creating) return
   stopPolling()
   const created = await store.start(datasetVersion.value, variantsForRun()).catch(() => null)
   if (!created) return
@@ -184,8 +193,9 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
               <label class="field-label" for="dataset-version">金标数据集</label>
               <input id="dataset-version" v-model="datasetVersion" class="text-input" readonly />
               <label class="field-label" for="stable-version">稳定版（STABLE）版本</label>
-              <select id="stable-version" v-model="stableVersionId" data-test="stable-version" class="text-input">
-                <option value="">首次建立稳定版（STABLE）（不纳入本次评测）</option>
+              <select id="stable-version" v-model="stableVersionId" data-test="stable-version" class="text-input" :disabled="stableVersions.length <= 1">
+                <option v-if="stableVersions.length === 0" value="">尚无正式版（首次建版）</option>
+                <option v-else-if="stableVersions.length > 1" value="">正式版状态异常，请刷新</option>
                 <option v-for="item in stableVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option>
               </select>
               <label class="field-label" for="candidate-version">候选版（CANDIDATE）版本</label>
@@ -193,7 +203,7 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
                 <option value="" disabled>请选择候选版</option>
                 <option v-for="item in candidateVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option>
               </select>
-              <button class="primary-action" data-test="start-evaluation" :disabled="!candidateVersionId || store.creating" @click="start">
+              <button class="primary-action" data-test="start-evaluation" :disabled="!canStart || store.creating" @click="start">
                 {{ store.creating ? '正在创建评测…' : stableVersionId ? `运行${statusLabel('BASELINE')} + ${statusLabel('STABLE')} + ${statusLabel('CANDIDATE')}` : `运行${statusLabel('BASELINE')} + 首个${statusLabel('CANDIDATE')}` }}
               </button>
               <p v-if="store.error" class="error-message">{{ store.error }}</p>

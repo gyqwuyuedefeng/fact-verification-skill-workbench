@@ -13,6 +13,8 @@ import java.io.InputStream;
 import java.io.OutputStream;
 import java.nio.ByteBuffer;
 import java.nio.ByteOrder;
+import java.nio.charset.CharacterCodingException;
+import java.nio.charset.CodingErrorAction;
 import java.nio.channels.FileChannel;
 import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
@@ -39,6 +41,7 @@ import java.util.zip.ZipEntry;
 import java.util.zip.ZipOutputStream;
 import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
 import org.apache.commons.compress.archivers.zip.ZipFile;
+import org.apache.commons.compress.archivers.zip.UnixStat;
 import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
@@ -188,7 +191,7 @@ public class SnapshotArchiveService {
     /** 在 reset/import 不可交错的边界中，用单一数据库快照同时决定应导出的文件集。 */
     private void exportExclusively(Path archivePath, Path operationRoot) {
         try {
-            Files.createDirectories(storageRoot);
+            ManagedStorageSwap.requireSafeStorageRoot(storageRoot, false);
             requireSafePhysicalParent(operationRoot, archivePath.getParent());
             try (OutputStream file = new LimitedOutputStream(
                             Files.newOutputStream(archivePath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE),
@@ -478,6 +481,7 @@ public class SnapshotArchiveService {
                 if (entry.isUnixSymlink()) {
                     throw new ServiceException("DEMO_SNAPSHOT_SYMLINK_ENTRY", "快照不允许包含符号链接 entry");
                 }
+                requireOrdinaryUnixType(entry);
                 if (!archive.canReadEntryData(entry)) {
                     throw new ServiceException("DEMO_SNAPSHOT_ZIP_FEATURE_UNSUPPORTED", "快照包含不支持的 ZIP 特性");
                 }
@@ -1182,7 +1186,16 @@ public class SnapshotArchiveService {
         if (length > 0 && bytes[length - 1] == '\r') {
             length--;
         }
-        return new String(bytes, 0, length, StandardCharsets.UTF_8);
+        try {
+            return StandardCharsets.UTF_8
+                    .newDecoder()
+                    .onMalformedInput(CodingErrorAction.REPORT)
+                    .onUnmappableCharacter(CodingErrorAction.REPORT)
+                    .decode(ByteBuffer.wrap(bytes, 0, length))
+                    .toString();
+        } catch (CharacterCodingException exception) {
+            throw new ServiceException("DEMO_SNAPSHOT_JSONL_UTF8_INVALID", "快照表 JSONL 包含非法 UTF-8 字节");
+        }
     }
 
     /** 有界读取小型 manifest；业务入口固定 1 MiB，测试可用小上限验证早停。 */
@@ -1271,17 +1284,32 @@ public class SnapshotArchiveService {
 
     /** 创建不可预测 operationId 目录，并从 storageRoot 开始逐层验证物理位置。 */
     private Path prepareOperationRoot(String hiddenRoot, UUID operationId) throws IOException {
-        if (Files.exists(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
-            if (Files.isSymbolicLink(storageRoot)
-                    || !Files.isDirectory(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
-                throw invalidStagingPath();
-            }
-        } else {
-            Files.createDirectories(storageRoot);
+        Path physicalRoot;
+        try {
+            physicalRoot = ManagedStorageSwap.requireSafeStorageRoot(storageRoot, true);
+        } catch (IOException exception) {
+            throw invalidStagingPath();
         }
         Path root = operationRoot(hiddenRoot, operationId);
-        createSafeDirectories(storageRoot, root);
+        createSafeDirectories(physicalRoot, root);
         return root;
+    }
+
+    /**
+     * 只允许平台中性 mode 0、普通文件与目录。
+     *
+     * <p>Unix 类型位非零时必须与 ZIP 条目的目录语义一致；FIFO、socket、块/字符设备以及缺少普通文件类型位的权限 mode 全部失败关闭。
+     */
+    private static void requireOrdinaryUnixType(ZipArchiveEntry entry) {
+        int mode = entry.getUnixMode();
+        if (mode == 0) {
+            return;
+        }
+        int type = mode & UnixStat.FILE_TYPE_FLAG;
+        int expected = entry.isDirectory() ? UnixStat.DIR_FLAG : UnixStat.FILE_FLAG;
+        if (type != expected) {
+            throw new ServiceException("DEMO_SNAPSHOT_SPECIAL_ENTRY", "快照不允许包含特殊 Unix 文件类型");
+        }
     }
 
     /** 确认已准备的目录仍是普通目录，用于创建 archive.zip 前再次收紧竞态窗口。 */
