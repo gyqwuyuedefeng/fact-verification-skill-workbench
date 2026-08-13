@@ -20,4 +20,5 @@ data/skill-runtime/*
 *.private.*
 .idea/
 .vscode/
+.worktrees/
 *.log
