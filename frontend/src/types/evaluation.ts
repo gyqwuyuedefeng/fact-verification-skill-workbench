@@ -12,6 +12,8 @@ export interface CoreMetrics {
   humanInterventionRate: MetricValue
 }
 
+export type EvaluationStatus = 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'INTERRUPTED'
+
 export interface EvaluationVariant {
   type: 'BASELINE' | 'SKILL'
   identifier: string
@@ -32,7 +34,7 @@ export interface EvaluationRun {
   variants: EvaluationVariant[] | null
   runManifest: Record<string, unknown> | null
   metrics: Record<string, CoreMetrics> | null
-  status: 'PENDING' | 'RUNNING' | 'COMPLETED' | 'FAILED' | 'INTERRUPTED'
+  status: EvaluationStatus
   gateStatus: 'PENDING' | 'PASS' | 'FAIL'
   gateReasons: GateCheck[] | null
   createdAt?: string | null

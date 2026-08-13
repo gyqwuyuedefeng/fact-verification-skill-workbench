@@ -30,13 +30,15 @@ export const useEvaluationStore = defineStore('evaluation', {
     error: null as string | null,
   }),
   actions: {
-    async start(datasetVersion: string, variantIds: string[]) {
+    async start(datasetVersion: string, variantIds: string[]): Promise<EvaluationRun> {
       this.busy = true
       this.error = null
       this.samples = []
       try {
-        this.evaluation = await createEvaluation(requestId(), datasetVersion, variantIds)
+        const created = await createEvaluation(requestId(), datasetVersion, variantIds)
+        this.evaluation = created
         await this.loadHistory()
+        return created
       } catch (error) {
         this.error = error instanceof Error ? error.message : '评测创建失败'
         throw error
@@ -44,26 +46,24 @@ export const useEvaluationStore = defineStore('evaluation', {
         this.busy = false
       }
     },
-    async refresh() {
-      if (!this.evaluation) return
+    async refreshEvaluation(evaluationId: string): Promise<void> {
       this.busy = true
       try {
-        this.evaluation = await getEvaluation(this.evaluation.id)
-        if (this.evaluation.status === 'COMPLETED') {
-          this.samples = await getEvaluationSamples(this.evaluation.id)
-        }
+        this.evaluation = await getEvaluation(evaluationId)
+        this.samples = await getEvaluationSamples(evaluationId)
       } finally {
         this.busy = false
       }
+    },
+    async refresh(): Promise<void> {
+      if (!this.evaluation) return
+      await this.refreshEvaluation(this.evaluation.id)
     },
     async loadHistory(versionId?: string) {
       this.history = await listEvaluations(versionId)
     },
     async selectEvaluation(evaluationId: string) {
-      this.evaluation = await getEvaluation(evaluationId)
-      this.samples = this.evaluation.status === 'COMPLETED'
-        ? await getEvaluationSamples(evaluationId)
-        : []
+      await this.refreshEvaluation(evaluationId)
     },
     async loadVersionSummary(versionId: string) {
       this.versionSummary = await getVersionEvaluationSummary(versionId)

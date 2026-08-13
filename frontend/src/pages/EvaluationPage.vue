@@ -1,21 +1,31 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue'
+import { computed, inject, onMounted, onUnmounted, ref } from 'vue'
+import { routeLocationKey, routerKey } from 'vue-router'
 
 import { reportUrl } from '../api/evaluation'
+import { metricLabel, shortId, skillVersionLabel, statusLabel } from '../presentation/labels'
 import { useEvaluationStore } from '../stores/evaluation'
+import { useSkillStore } from '../stores/skill'
 import type { CoreMetrics, EvaluationSample, MetricValue } from '../types/evaluation'
 
 const store = useEvaluationStore()
+const skillStore = useSkillStore()
+const route = inject(routeLocationKey, null)
+const router = inject(routerKey, null)
 const activeTab = ref<'runs' | 'version' | 'compare'>('runs')
 const datasetVersion = ref('public-tech-2024-v3')
-const stableId = ref('')
-const candidateId = ref('')
-const initialStable = ref(false)
+const stableVersionId = ref('')
+const candidateVersionId = ref('')
 const summaryVersionId = ref('')
 const leftVersionId = ref('')
 const rightVersionId = ref('')
+const lastRefreshedAt = ref<string | null>(null)
+let pollTimer: number | undefined
 
-onMounted(() => store.loadHistory().catch(() => undefined))
+const stableVersions = computed(() => skillStore.versions.filter((item) => item.status === 'STABLE'))
+const candidateVersions = computed(() => skillStore.versions.filter((item) => item.status === 'CANDIDATE'))
+const frozenVersions = computed(() => skillStore.versions.filter((item) => item.status !== 'DRAFT'))
+const activeRun = computed(() => ['PENDING', 'RUNNING'].includes(store.evaluation?.status ?? ''))
 
 const metricRows = computed(() => Object.entries(store.evaluation?.metrics ?? {}))
 const modelParameters = computed(() => {
@@ -26,11 +36,70 @@ const modelParameters = computed(() => {
 })
 
 async function start() {
-  if ((!initialStable.value && !stableId.value) || !candidateId.value || store.busy) return
-  const variants = initialStable.value
-    ? ['BASELINE', candidateId.value]
-    : ['BASELINE', stableId.value, candidateId.value]
-  await store.start(datasetVersion.value, variants).catch(() => undefined)
+  if (!candidateVersionId.value || store.busy) return
+  const created = await store.start(datasetVersion.value, variantsForRun()).catch(() => null)
+  if (!created) return
+  await router?.replace({ query: { evaluationId: created.id } })
+  await refreshAndTrack(created.id)
+  if (activeRun.value) startPolling(created.id)
+}
+
+function variantsForRun(): string[] {
+  return ['BASELINE', ...(stableVersionId.value ? [stableVersionId.value] : []), candidateVersionId.value]
+}
+
+function stopPolling() {
+  if (pollTimer !== undefined) {
+    globalThis.clearInterval(pollTimer)
+    pollTimer = undefined
+  }
+}
+
+async function refreshAndTrack(id: string) {
+  await store.refreshEvaluation(id)
+  lastRefreshedAt.value = new Date().toISOString()
+}
+
+function startPolling(id: string) {
+  stopPolling()
+  pollTimer = globalThis.setInterval(async () => {
+    await refreshAndTrack(id).catch(() => undefined)
+    if (!activeRun.value || store.evaluation?.id !== id) stopPolling()
+  }, 5_000)
+}
+
+async function selectEvaluation(id: string) {
+  stopPolling()
+  await router?.replace({ query: { evaluationId: id } })
+  await refreshAndTrack(id).catch(() => undefined)
+  if (activeRun.value) startPolling(id)
+}
+
+async function refreshCurrentEvaluation() {
+  if (!store.evaluation) return
+  await refreshAndTrack(store.evaluation.id).catch(() => undefined)
+  if (!activeRun.value) stopPolling()
+}
+
+onMounted(async () => {
+  await Promise.all([
+    skillStore.load().catch(() => undefined),
+    store.loadHistory().catch(() => undefined),
+  ])
+  const evaluationId = typeof route?.query.evaluationId === 'string' ? route.query.evaluationId : null
+  if (!evaluationId) return
+  await refreshAndTrack(evaluationId).catch(() => undefined)
+  if (activeRun.value) startPolling(evaluationId)
+})
+
+onUnmounted(stopPolling)
+
+function runningDuration(value?: string | null) {
+  if (!value) return '刚刚开始'
+  const elapsedSeconds = Math.max(0, Math.floor((Date.now() - new Date(value).getTime()) / 1_000))
+  const minutes = Math.floor(elapsedSeconds / 60)
+  const seconds = elapsedSeconds % 60
+  return minutes ? `${minutes} 分 ${seconds} 秒` : `${seconds} 秒`
 }
 
 function display(metric: MetricValue): string {
@@ -55,11 +124,11 @@ function rawOutput(value: unknown) {
   return JSON.stringify(value ?? null, null, 2)
 }
 
-const metricColumns: Array<{ key: keyof CoreMetrics; label: string }> = [
-  { key: 'accuracy', label: '准确率' },
-  { key: 'completionRate', label: '任务完成率' },
-  { key: 'stability', label: '稳定性' },
-  { key: 'humanInterventionRate', label: '人工介入率' },
+const metricColumns: Array<{ key: keyof CoreMetrics }> = [
+  { key: 'accuracy' },
+  { key: 'completionRate' },
+  { key: 'stability' },
+  { key: 'humanInterventionRate' },
 ]
 </script>
 
@@ -84,10 +153,10 @@ const metricColumns: Array<{ key: keyof CoreMetrics; label: string }> = [
       <div class="admin-evaluation-grid">
         <aside class="panel history-panel">
           <div class="panel-heading"><span class="step-index">H</span><div><strong>历史评测</strong><small>不可覆盖 · 新到旧</small></div></div>
-          <button v-for="item in store.history" :key="item.id" class="history-row" :class="{ active: item.id === store.evaluation?.id }" @click="store.selectEvaluation(item.id)">
+          <button v-for="item in store.history" :key="item.id" class="history-row" :class="{ active: item.id === store.evaluation?.id }" @click="selectEvaluation(item.id)">
             <span :class="['gate-dot', item.gateStatus.toLowerCase()]"></span>
             <div><strong>{{ formatTime(item.createdAt) }}</strong><small>{{ item.datasetVersion }} · {{ item.sampleCount }} 条 · {{ item.variants?.length ?? 0 }} 变体</small></div>
-            <code>{{ item.id.slice(0, 8) }}</code>
+            <code>{{ shortId(item.id) }}</code>
           </button>
           <div v-if="!store.history.length" class="compact-empty">暂无历史；可先在右侧创建评测。</div>
         </aside>
@@ -98,13 +167,18 @@ const metricColumns: Array<{ key: keyof CoreMetrics; label: string }> = [
               <div class="panel-heading"><span class="step-index">01</span><div><strong>新建同条件评测</strong><small>唯一变化：基线指令或冻结 Skill</small></div></div>
               <label class="field-label" for="dataset-version">金标数据集</label>
               <input id="dataset-version" v-model="datasetVersion" class="text-input" readonly />
-              <label class="shadow-option"><input v-model="initialStable" data-test="initial-stable" type="checkbox" /><span>首次建立 Stable（BASELINE + 首个 Candidate）</span></label>
-              <label class="field-label" for="stable-id">Stable 版本 ID</label>
-              <input id="stable-id" v-model="stableId" data-test="stable-id" class="text-input" :disabled="initialStable" placeholder="冻结 Stable ID" />
-              <label class="field-label" for="candidate-id">Candidate 版本 ID</label>
-              <input id="candidate-id" v-model="candidateId" data-test="candidate-id" class="text-input" placeholder="冻结 Candidate ID" />
-              <button class="primary-action" data-test="start-evaluation" :disabled="(!initialStable && !stableId) || !candidateId || store.busy" @click="start">
-                {{ store.busy ? '评测运行中…' : initialStable ? '运行 BASELINE + 首个 Candidate' : '运行 BASELINE + Stable + Candidate' }}
+              <label class="field-label" for="stable-version">Stable 版本</label>
+              <select id="stable-version" v-model="stableVersionId" data-test="stable-version" class="text-input">
+                <option value="">首次建立 Stable（不纳入本次评测）</option>
+                <option v-for="item in stableVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option>
+              </select>
+              <label class="field-label" for="candidate-version">Candidate 版本</label>
+              <select id="candidate-version" v-model="candidateVersionId" data-test="candidate-version" class="text-input">
+                <option value="" disabled>请选择候选版</option>
+                <option v-for="item in candidateVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option>
+              </select>
+              <button class="primary-action" data-test="start-evaluation" :disabled="!candidateVersionId || store.busy" @click="start">
+                {{ store.busy ? '正在创建评测…' : stableVersionId ? '运行 BASELINE + Stable + Candidate' : '运行 BASELINE + 首个 Candidate' }}
               </button>
               <p v-if="store.error" class="error-message">{{ store.error }}</p>
             </section>
@@ -119,9 +193,14 @@ const metricColumns: Array<{ key: keyof CoreMetrics; label: string }> = [
                 <div><dt>EVIDENCE</dt><dd>{{ store.evaluation?.runManifest?.evidenceSnapshotHash ?? '待选择' }}</dd></div>
                 <div><dt>OUTPUT</dt><dd>{{ store.evaluation?.runManifest?.outputSchemaHash ?? '待选择' }}</dd></div>
               </dl>
-              <button v-if="store.evaluation" class="secondary-action" @click="store.refresh">刷新评测状态</button>
+              <button v-if="store.evaluation" class="secondary-action" @click="refreshCurrentEvaluation">刷新评测状态</button>
             </section>
           </div>
+
+          <section v-if="activeRun" class="panel evaluation-running-card" data-test="evaluation-running-card">
+            <span class="status-spinner" aria-hidden="true">◌</span>
+            <div><strong>{{ statusLabel(store.evaluation?.status) }}</strong><small>已运行 {{ runningDuration(store.evaluation?.createdAt) }} · 最近刷新 {{ lastRefreshedAt ? formatTime(lastRefreshedAt) : '待刷新' }}</small></div>
+          </section>
 
           <section class="results-section evaluation-results">
             <div class="results-heading">
@@ -133,7 +212,7 @@ const metricColumns: Array<{ key: keyof CoreMetrics; label: string }> = [
             </div>
             <div v-if="!metricRows.length" class="empty-results">这里展示每项指标的定义、分子、分母和百分比。</div>
             <div v-else class="metrics-table">
-              <div class="metric-row metric-head"><span>变体</span><span v-for="column in metricColumns" :key="column.key">{{ column.label }}</span></div>
+              <div class="metric-row metric-head"><span>变体</span><span v-for="column in metricColumns" :key="column.key">{{ metricLabel(column.key) }}</span></div>
               <div v-for="[variant, metrics] in metricRows" :key="variant" class="metric-row">
                 <strong>{{ variant }}</strong><span v-for="column in metricColumns" :key="column.key" :title="metrics[column.key].definition">{{ display(metrics[column.key]) }}</span>
               </div>
@@ -150,22 +229,22 @@ const metricColumns: Array<{ key: keyof CoreMetrics; label: string }> = [
 
     <section v-else-if="activeTab === 'version'" class="panel admin-workspace">
       <div class="panel-heading"><span class="step-index">V</span><div><strong>一个版本的全部评测</strong><small>每个数字都回到原始批次，不跨条件平均</small></div></div>
-      <div class="inline-query"><input v-model="summaryVersionId" class="text-input" placeholder="输入 Skill 版本 ID" /><button class="primary-action compact" :disabled="!summaryVersionId" @click="store.loadVersionSummary(summaryVersionId)">汇总</button></div>
+      <div class="inline-query"><select v-model="summaryVersionId" data-test="summary-version" class="text-input"><option value="" disabled>请选择冻结版本</option><option v-for="item in frozenVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option></select><button class="primary-action compact" :disabled="!summaryVersionId" @click="store.loadVersionSummary(summaryVersionId)">汇总</button></div>
       <div v-if="store.versionSummary" class="summary-strip">
         <div><small>参评次数</small><strong>{{ store.versionSummary.evaluationCount }}</strong></div>
         <div><small>最新评测</small><code>{{ store.versionSummary.latestEvaluationId }}</code></div>
         <div><small>正式门禁评测</small><code>{{ store.versionSummary.registeredEvaluationId ?? '尚未注册' }}</code></div>
       </div>
-      <button v-for="item in store.versionSummary?.evaluations ?? []" :key="item.id" class="version-evaluation-row" @click="store.selectEvaluation(item.id); activeTab = 'runs'">
-        <div><strong>{{ formatTime(item.createdAt) }}</strong><small>{{ item.datasetVersion }} · GATE {{ item.gateStatus }}</small></div><span v-if="item.id === store.versionSummary?.registeredEvaluationId" class="stable-chip">正式门禁</span><code>{{ item.id }}</code>
+      <button v-for="item in store.versionSummary?.evaluations ?? []" :key="item.id" class="version-evaluation-row" @click="selectEvaluation(item.id); activeTab = 'runs'">
+        <div><strong>{{ formatTime(item.createdAt) }}</strong><small>{{ item.datasetVersion }} · GATE {{ statusLabel(item.gateStatus) }}</small></div><span v-if="item.id === store.versionSummary?.registeredEvaluationId" class="stable-chip">正式门禁</span><code>{{ shortId(item.id) }}</code>
       </button>
     </section>
 
     <section v-else class="panel admin-workspace">
       <div class="panel-heading"><span class="step-index">Δ</span><div><strong>当前版本 vs 上一版 / Stable</strong><small>只在共同评测批次中给出直接优劣</small></div></div>
-      <div class="compare-query"><input v-model="leftVersionId" class="text-input" placeholder="基准版本 ID" /><span>→</span><input v-model="rightVersionId" class="text-input" placeholder="目标版本 ID" /><button class="primary-action compact" :disabled="!leftVersionId || !rightVersionId" @click="store.compareVersions(leftVersionId, rightVersionId)">对比</button></div>
+      <div class="compare-query"><select v-model="leftVersionId" data-test="compare-left-version" class="text-input"><option value="" disabled>请选择基准版本</option><option v-for="item in frozenVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option></select><span>→</span><select v-model="rightVersionId" data-test="compare-right-version" class="text-input"><option value="" disabled>请选择目标版本</option><option v-for="item in frozenVersions" :key="item.id" :value="item.id">{{ skillVersionLabel(item) }}</option></select><button class="primary-action compact" data-test="compare-versions" :disabled="!leftVersionId || !rightVersionId" @click="store.compareVersions(leftVersionId, rightVersionId)">对比</button></div>
       <template v-if="store.comparison">
-        <div v-if="!store.comparison.comparable" class="comparison-warning"><strong>不可直接比较</strong><span v-for="reason in store.comparison.reasons" :key="reason">{{ reason }}</span></div>
+        <div v-if="!store.comparison.comparable" class="comparison-warning"><strong>暂无共同评测</strong><span v-for="reason in store.comparison.reasons" :key="reason">{{ reason }}</span></div>
         <template v-else>
           <p class="page-lead">共同评测批次 <code>{{ store.comparison.evaluationRunId }}</code></p>
           <div class="delta-grid"><div v-for="(value, key) in store.comparison.metricDeltas" :key="key"><small>{{ key }}</small><strong :class="{ positive: value > 0, negative: value < 0 }">{{ delta(value) }}</strong></div></div>
@@ -175,3 +254,38 @@ const metricColumns: Array<{ key: keyof CoreMetrics; label: string }> = [
     </section>
   </section>
 </template>
+
+<style scoped>
+.evaluation-running-card {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  margin-top: 18px;
+}
+
+.evaluation-running-card div {
+  display: grid;
+  gap: 5px;
+}
+
+.evaluation-running-card small {
+  color: #6e8399;
+}
+
+.status-spinner {
+  display: inline-grid;
+  width: 24px;
+  height: 24px;
+  place-items: center;
+  color: #48d6c7;
+  font-size: 24px;
+  line-height: 1;
+  animation: evaluation-status-spin 900ms linear infinite;
+}
+
+@keyframes evaluation-status-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+</style>

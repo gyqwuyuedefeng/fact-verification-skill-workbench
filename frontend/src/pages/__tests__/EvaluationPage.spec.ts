@@ -1,9 +1,49 @@
 import { flushPromises, mount } from '@vue/test-utils'
 import { createPinia, setActivePinia } from 'pinia'
 import { beforeEach, describe, expect, it, vi } from 'vitest'
+import { createMemoryHistory, createRouter } from 'vue-router'
 
 import EvaluationPage from '../EvaluationPage.vue'
 import { useEvaluationStore } from '../../stores/evaluation'
+import { useSkillStore } from '../../stores/skill'
+import type { EvaluationRun } from '../../types/evaluation'
+import type { SkillVersion } from '../../types/skill'
+
+function version(id: string, status: SkillVersion['status']): SkillVersion {
+  return {
+    id,
+    skillKey: 'fact-verification',
+    version: `v-${id}`,
+    parentVersionId: null,
+    status,
+    contentHash: `${id}-hash`,
+    changeSummary: `${id} 变更`,
+    createdAt: '2026-08-13T00:00:00Z',
+    frozenAt: status === 'DRAFT' ? null : '2026-08-13T00:00:00Z',
+  }
+}
+
+function run(id: string, status: EvaluationRun['status']): EvaluationRun {
+  return {
+    id,
+    datasetVersion: 'public-tech-2024-v3',
+    datasetHash: null,
+    sampleCount: 30,
+    variants: null,
+    runManifest: null,
+    metrics: null,
+    status,
+    gateStatus: 'PENDING',
+    gateReasons: null,
+  }
+}
+
+function evaluationRouter() {
+  return createRouter({
+    history: createMemoryHistory(),
+    routes: [{ path: '/admin/evaluations', component: EvaluationPage }],
+  })
+}
 
 describe('EvaluationPage', () => {
   beforeEach(() => {
@@ -101,30 +141,41 @@ describe('EvaluationPage', () => {
   it('以 BASELINE、Stable、Candidate 创建评测', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
+    const router = evaluationRouter()
+    await router.push('/admin/evaluations')
+    await router.isReady()
     const store = useEvaluationStore()
-    const start = vi.spyOn(store, 'start').mockResolvedValue()
-    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia] } })
+    const skillStore = useSkillStore()
+    skillStore.versions = [version('stable-v1', 'STABLE'), version('candidate-v2', 'CANDIDATE')]
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+    const start = vi.spyOn(store, 'start').mockResolvedValue(run('evaluation-created', 'PENDING'))
+    vi.spyOn(store, 'refreshEvaluation').mockResolvedValue()
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia, router] } })
 
-    await wrapper.find('[data-test="stable-id"]').setValue('stable-v1')
-    await wrapper.find('[data-test="candidate-id"]').setValue('candidate-v2')
+    await wrapper.find('[data-test="stable-version"]').setValue('stable-v1')
+    await wrapper.find('[data-test="candidate-version"]').setValue('candidate-v2')
     await wrapper.find('[data-test="start-evaluation"]').trigger('click')
+    await flushPromises()
 
     expect(start).toHaveBeenCalledWith('public-tech-2024-v3', [
       'BASELINE',
       'stable-v1',
       'candidate-v2',
     ])
+    expect(router.currentRoute.value.query.evaluationId).toBe('evaluation-created')
   })
 
-  it('首次建立 Stable 时只以 BASELINE 和首个 Candidate 创建评测', async () => {
+  it('没有 Stable 时只以 BASELINE 和 Candidate 创建评测', async () => {
     const pinia = createPinia()
     setActivePinia(pinia)
     const store = useEvaluationStore()
+    const skillStore = useSkillStore()
+    skillStore.versions = [version('candidate-v1', 'CANDIDATE')]
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
     const start = vi.spyOn(store, 'start').mockResolvedValue()
     const wrapper = mount(EvaluationPage, { global: { plugins: [pinia] } })
 
-    await wrapper.find('[data-test="initial-stable"]').setValue(true)
-    await wrapper.find('[data-test="candidate-id"]').setValue('candidate-v1')
+    await wrapper.find('[data-test="candidate-version"]').setValue('candidate-v1')
     await wrapper.find('[data-test="start-evaluation"]').trigger('click')
 
     expect(start).toHaveBeenCalledWith('public-tech-2024-v3', ['BASELINE', 'candidate-v1'])
@@ -143,5 +194,122 @@ describe('EvaluationPage', () => {
     expect(wrapper.find('[data-test="evaluation-tab-version"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="evaluation-tab-compare"]').exists()).toBe(true)
     expect(wrapper.text()).toContain('历史评测')
+  })
+
+  it('Stable 和 Candidate 均使用按状态过滤的下拉选项', () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const skillStore = useSkillStore()
+    skillStore.versions = [
+      version('stable-v1', 'STABLE'),
+      version('candidate-v2', 'CANDIDATE'),
+      version('draft-v3', 'DRAFT'),
+    ]
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia] } })
+
+    const stable = wrapper.get<HTMLSelectElement>('[data-test="stable-version"]')
+    const candidate = wrapper.get<HTMLSelectElement>('[data-test="candidate-version"]')
+    expect(stable.element.tagName).toBe('SELECT')
+    expect(candidate.element.tagName).toBe('SELECT')
+    expect(stable.text()).toContain('stable-v1')
+    expect(stable.text()).not.toContain('candidate-v2')
+    expect(candidate.text()).toContain('candidate-v2')
+    expect(candidate.text()).not.toContain('draft-v3')
+  })
+
+  it('版本汇总排除 DRAFT，且没有共同评测的冻结版本仍可选择', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useEvaluationStore()
+    const skillStore = useSkillStore()
+    skillStore.versions = [
+      version('stable-v1', 'STABLE'),
+      version('candidate-v2', 'CANDIDATE'),
+      version('draft-v3', 'DRAFT'),
+    ]
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+    const compare = vi.spyOn(store, 'compareVersions').mockImplementation(async () => {
+      store.comparison = {
+        comparable: false,
+        leftVersionId: 'stable-v1',
+        rightVersionId: 'candidate-v2',
+        evaluationRunId: null,
+        reasons: ['暂无共同评测'],
+        metricDeltas: {},
+        sampleOutcomes: {},
+        failureTypeChanges: {},
+      }
+    })
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia] } })
+
+    await wrapper.get('[data-test="evaluation-tab-version"]').trigger('click')
+    expect(wrapper.get('[data-test="summary-version"]').text()).toContain('stable-v1')
+    expect(wrapper.get('[data-test="summary-version"]').text()).not.toContain('draft-v3')
+
+    await wrapper.get('[data-test="evaluation-tab-compare"]').trigger('click')
+    await wrapper.get('[data-test="compare-left-version"]').setValue('stable-v1')
+    await wrapper.get('[data-test="compare-right-version"]').setValue('candidate-v2')
+    await wrapper.get('[data-test="compare-versions"]').trigger('click')
+
+    expect(compare).toHaveBeenCalledWith('stable-v1', 'candidate-v2')
+    expect(wrapper.text()).toContain('暂无共同评测')
+  })
+
+  it.each(['PENDING', 'RUNNING'] as const)('从 evaluationId 恢复 %s 评测，并在 5 秒后刷新', async (status) => {
+    vi.useFakeTimers()
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = evaluationRouter()
+    await router.push('/admin/evaluations?evaluationId=evaluation-running')
+    await router.isReady()
+    const store = useEvaluationStore()
+    const skillStore = useSkillStore()
+    store.evaluation = run('evaluation-running', status)
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+    vi.spyOn(store, 'loadHistory').mockResolvedValue()
+    const refresh = vi.spyOn(store, 'refreshEvaluation').mockResolvedValue()
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia, router] } })
+    await flushPromises()
+
+    expect(refresh).toHaveBeenCalledWith('evaluation-running')
+    refresh.mockClear()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(refresh).toHaveBeenCalledWith('evaluation-running')
+
+    wrapper.unmount()
+    refresh.mockClear()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(refresh).not.toHaveBeenCalled()
+    vi.useRealTimers()
+  })
+
+  it('轮询刷新到终态后会停止定时器', async () => {
+    vi.useFakeTimers()
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const router = evaluationRouter()
+    await router.push('/admin/evaluations?evaluationId=evaluation-completed')
+    await router.isReady()
+    const store = useEvaluationStore()
+    const skillStore = useSkillStore()
+    store.evaluation = run('evaluation-completed', 'RUNNING')
+    vi.spyOn(skillStore, 'load').mockResolvedValue()
+    vi.spyOn(store, 'loadHistory').mockResolvedValue()
+    let refreshCount = 0
+    const refresh = vi.spyOn(store, 'refreshEvaluation').mockImplementation(async () => {
+      refreshCount += 1
+      if (refreshCount === 2) store.evaluation = run('evaluation-completed', 'COMPLETED')
+    })
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia, router] } })
+    await flushPromises()
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(refresh).toHaveBeenCalledTimes(2)
+    await vi.advanceTimersByTimeAsync(5_000)
+    expect(refresh).toHaveBeenCalledTimes(2)
+
+    wrapper.unmount()
+    vi.useRealTimers()
   })
 })
