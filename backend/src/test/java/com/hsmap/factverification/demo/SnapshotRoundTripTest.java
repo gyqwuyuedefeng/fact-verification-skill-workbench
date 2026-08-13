@@ -20,6 +20,11 @@ import java.util.EnumMap;
 import java.util.List;
 import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CountDownLatch;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -58,8 +63,8 @@ class SnapshotRoundTripTest {
         byte[] frozenSkill = "# 冻结 Skill\n保持原字节".getBytes(StandardCharsets.UTF_8);
         byte[] runtimeSkill = "# 运行 Skill\n保持原字节".getBytes(StandardCharsets.UTF_8);
         write(sourceStorage.resolve("uploads/" + taskId + "/material.md"), material);
-        write(sourceStorage.resolve("skill-snapshots/versions/skill.md"), frozenSkill);
-        write(sourceStorage.resolve("skill-runtime/current/SKILL.md"), runtimeSkill);
+        write(sourceStorage.resolve("skill-snapshots/" + childSkillId + "/skill.md"), frozenSkill);
+        write(sourceStorage.resolve("skill-runtime/" + childSkillId + "/SKILL.md"), runtimeSkill);
 
         EnumMap<SnapshotTable, List<String>> sourceRows = sampleRows(
                 taskId,
@@ -87,9 +92,9 @@ class SnapshotRoundTripTest {
         assertRowsEqualExceptUploadPath(sourceRows, targetRepository.rows(), taskId, targetStorage);
         assertThat(sha256(targetStorage.resolve("uploads/" + taskId + "/material.md")))
                 .isEqualTo(sha256(material));
-        assertThat(sha256(targetStorage.resolve("skill-snapshots/versions/skill.md")))
+        assertThat(sha256(targetStorage.resolve("skill-snapshots/" + childSkillId + "/skill.md")))
                 .isEqualTo(sha256(frozenSkill));
-        assertThat(sha256(targetStorage.resolve("skill-runtime/current/SKILL.md")))
+        assertThat(sha256(targetStorage.resolve("skill-runtime/" + childSkillId + "/SKILL.md")))
                 .isEqualTo(sha256(runtimeSkill));
         assertThat(targetRepository.importOrder())
                 .containsSubsequence(
@@ -106,8 +111,8 @@ class SnapshotRoundTripTest {
     /**
      * 测试场景：数据库导入到 claim 时发生运行时异常。
      * 前置条件：归档已完整校验，目标数据库和三个正式目录最初为空。
-     * 期望结果：此前插入的行被 clearAll 补偿，已移动或创建的正式目录恢复为仅含 .gitkeep 的空白状态。
-     * 断言重点：事务和文件交换不能留下半导入状态。
+     * 期望结果：事务管理器回滚此前插入行，服务不再发起二次 clearAll 补偿。
+     * 断言重点：数据库失败仅依赖本次事务回滚，不能删除其他请求的状态。
      */
     @Test
     void restoresBlankStateWhenDatabaseImportFails() throws Exception {
@@ -136,14 +141,15 @@ class SnapshotRoundTripTest {
                 .hasMessageContaining("模拟数据库故障");
 
         assertThat(failingRepository.rows().values()).allMatch(List::isEmpty);
+        assertThat(failingRepository.clearAllCalls()).isZero();
         assertManagedDirectoriesBlank(targetStorage);
     }
 
     /**
      * 测试场景：数据库行已写入后，第二个正式目录在原子交换前意外变为非空。
      * 前置条件：仓储替身在最后一表插入时模拟并发运行产物，迫使文件交换中途失败。
-     * 期望结果：已移动的 uploads、尚未移动的其他目录和全部导入行都恢复为空白状态。
-     * 断言重点：文件交换失败与数据库失败使用同一补偿边界，不能保留首个已移动目录或半导入表行。
+     * 期望结果：已移动的 uploads 被撤销，事务回滚导入行，但本次未安装的并发文件被保留。
+     * 断言重点：补偿只撤销本次确认已安装的目录，不能无条件清除其他请求产物。
      */
     @Test
     void restoresBlankStateWhenManagedDirectorySwapFails() throws Exception {
@@ -180,12 +186,137 @@ class SnapshotRoundTripTest {
                 .hasMessageContaining("正式运行目录在导入期间变为非空");
 
         assertThat(targetRepository.rows().values()).allMatch(List::isEmpty);
-        assertManagedDirectoriesBlank(targetStorage);
+        assertThat(targetStorage.resolve("uploads")).doesNotExist();
+        assertThat(targetStorage.resolve("skill-snapshots/concurrent.txt")).exists();
+        assertThat(targetStorage.resolve("skill-runtime")).doesNotExist();
+    }
+
+    /**
+     * 测试场景：一次导入在事务内暂停时，管理员同时发起 reset。
+     * 前置条件：快照与 reset 显式共享同一个 DemoOperationCoordinator。
+     * 期望结果：导入释放独占边界前，reset 不得进入 clearAll；之后两个操作按顺序完成。
+     * 断言重点：空白检查、数据库事务与目录交换之间不存在 reset/import 交错窗口。
+     */
+    @Test
+    void doesNotInterleaveResetWithImport() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        Path sourceStorage = temporaryRoot.resolve("serialized-source");
+        Path targetStorage = temporaryRoot.resolve("serialized-target");
+        write(sourceStorage.resolve("uploads/" + taskId + "/material.md"), "material".getBytes(StandardCharsets.UTF_8));
+        EnumMap<SnapshotTable, List<String>> sourceRows = sampleRows(
+                taskId,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                sourceStorage.resolve("uploads/" + taskId + "/material.md").toAbsolutePath().normalize());
+        ByteArrayOutputStream zip = new ByteArrayOutputStream();
+        archive(new InMemorySnapshotRepository(sourceRows), sourceStorage).exportTo(zip);
+
+        InMemorySnapshotRepository targetRepository =
+                new InMemorySnapshotRepository(new EnumMap<>(SnapshotTable.class));
+        CountDownLatch importEntered = new CountDownLatch(1);
+        CountDownLatch allowImport = new CountDownLatch(1);
+        targetRepository.pauseFirstInsert(importEntered, allowImport);
+        DemoOperationCoordinator coordinator = new DemoOperationCoordinator();
+        RecordingTransactionManager transactions = new RecordingTransactionManager(targetRepository::rollbackImportedRows);
+        DemoStateService stateService = new DemoStateService(
+                targetRepository, new ManagedStorageSwap(targetStorage), transactions, coordinator);
+        SnapshotArchiveService importer = archive(targetRepository, targetStorage, stateService, transactions, coordinator);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> importing = executor.submit(() ->
+                    importer.importFrom(new ByteArrayInputStream(zip.toByteArray()), "导入快照"));
+            assertThat(importEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<?> resetting = executor.submit(() ->
+                    stateService.reset("serialized-reset", "清空全部比赛数据"));
+
+            Thread.sleep(100);
+            assertThat(targetRepository.clearAllCalls()).isZero();
+            allowImport.countDown();
+            importing.get(5, TimeUnit.SECONDS);
+            resetting.get(5, TimeUnit.SECONDS);
+            assertThat(targetRepository.clearAllCalls()).isEqualTo(1);
+        } finally {
+            allowImport.countDown();
+            executor.shutdownNow();
+        }
+    }
+
+    /**
+     * 测试场景：失败导入暂停时，另一请求使用同一竞赛状态边界导入合法快照。
+     * 前置条件：首次仅在 claim 插入时失败，测试事务管理器模拟数据库回滚本次写入。
+     * 期望结果：第二次导入在失败操作完整退出后成功，最终行与文件均保留。
+     * 断言重点：失败路径不得无条件 clearAll，更不得删除另一请求的成功结果。
+     */
+    @Test
+    void failedImportDoesNotDeleteAnotherSuccessfulImport() throws Exception {
+        UUID taskId = UUID.randomUUID();
+        Path sourceStorage = temporaryRoot.resolve("concurrent-source");
+        Path targetStorage = temporaryRoot.resolve("concurrent-target");
+        write(sourceStorage.resolve("uploads/" + taskId + "/material.md"), "material".getBytes(StandardCharsets.UTF_8));
+        EnumMap<SnapshotTable, List<String>> sourceRows = sampleRows(
+                taskId,
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                UUID.randomUUID(),
+                sourceStorage.resolve("uploads/" + taskId + "/material.md").toAbsolutePath().normalize());
+        ByteArrayOutputStream zip = new ByteArrayOutputStream();
+        archive(new InMemorySnapshotRepository(sourceRows), sourceStorage).exportTo(zip);
+
+        InMemorySnapshotRepository targetRepository =
+                new InMemorySnapshotRepository(new EnumMap<>(SnapshotTable.class));
+        CountDownLatch firstEntered = new CountDownLatch(1);
+        CountDownLatch allowFirst = new CountDownLatch(1);
+        targetRepository.pauseFirstInsert(firstEntered, allowFirst);
+        targetRepository.failOnceAt(SnapshotTable.CLAIM);
+        DemoOperationCoordinator coordinator = new DemoOperationCoordinator();
+        RecordingTransactionManager transactions = new RecordingTransactionManager(targetRepository::rollbackImportedRows);
+        DemoStateService stateService = mock(DemoStateService.class);
+        SnapshotArchiveService importer = archive(targetRepository, targetStorage, stateService, transactions, coordinator);
+
+        ExecutorService executor = Executors.newFixedThreadPool(2);
+        try {
+            Future<?> failed = executor.submit(() ->
+                    importer.importFrom(new ByteArrayInputStream(zip.toByteArray()), "导入快照"));
+            assertThat(firstEntered.await(5, TimeUnit.SECONDS)).isTrue();
+            Future<?> successful = executor.submit(() ->
+                    importer.importFrom(new ByteArrayInputStream(zip.toByteArray()), "导入快照"));
+            allowFirst.countDown();
+
+            assertThatThrownBy(() -> failed.get(5, TimeUnit.SECONDS))
+                    .hasRootCauseMessage("模拟数据库故障：claim");
+            successful.get(5, TimeUnit.SECONDS);
+            assertThat(targetRepository.rows())
+                    .allSatisfy((table, rows) -> assertThat(rows).hasSameSizeAs(sourceRows.get(table)));
+            assertThat(targetRepository.clearAllCalls()).isZero();
+            assertThat(targetStorage.resolve("uploads/" + taskId + "/material.md")).exists();
+        } finally {
+            allowFirst.countDown();
+            executor.shutdownNow();
+        }
     }
 
     /** 创建使用生产三重容量值的快照服务，状态边界由无活动/空白 Mock 表示。 */
     private SnapshotArchiveService archive(DemoStateRepository repository, Path storageRoot) {
-        DemoStateService stateService = mock(DemoStateService.class);
+        RecordingTransactionManager transactions = repository instanceof InMemorySnapshotRepository memory
+                ? new RecordingTransactionManager(memory::rollbackImportedRows)
+                : new RecordingTransactionManager();
+        return archive(
+                repository,
+                storageRoot,
+                mock(DemoStateService.class),
+                transactions,
+                new DemoOperationCoordinator());
+    }
+
+    /** 显式共享状态门禁、事务替身和单用途协调器，供并发边界测试使用。 */
+    private SnapshotArchiveService archive(
+            DemoStateRepository repository,
+            Path storageRoot,
+            DemoStateService stateService,
+            RecordingTransactionManager transactions,
+            DemoOperationCoordinator coordinator) {
         WorkbenchProperties properties = new WorkbenchProperties(
                 new WorkbenchProperties.DatabaseBoundary("demo", "test", false),
                 storageRoot,
@@ -201,7 +332,8 @@ class SnapshotRoundTripTest {
                 properties,
                 adminProperties,
                 OBJECT_MAPPER,
-                new RecordingTransactionManager());
+                transactions,
+                coordinator);
     }
 
     /** 构造包含七表行、Skill 循环引用及嵌套 JSONB 的代表性内存数据。 */
@@ -292,6 +424,9 @@ class SnapshotRoundTripTest {
     private static void assertManagedDirectoriesBlank(Path storageRoot) throws Exception {
         for (String directory : List.of("uploads", "skill-snapshots", "skill-runtime")) {
             Path root = storageRoot.resolve(directory);
+            if (Files.notExists(root)) {
+                continue;
+            }
             assertThat(root).isDirectory();
             try (var paths = Files.walk(root)) {
                 assertThat(paths.filter(path -> !path.equals(root))
@@ -326,8 +461,13 @@ class SnapshotRoundTripTest {
         private final EnumMap<SnapshotTable, List<String>> rows = new EnumMap<>(SnapshotTable.class);
         private final List<SnapshotTable> importOrder = new ArrayList<>();
         private SnapshotTable failureTable;
+        private boolean failOnlyOnce;
         private boolean skillReferencesRestored;
         private Runnable afterReleaseInsert;
+        private CountDownLatch firstInsertEntered;
+        private CountDownLatch allowFirstInsert;
+        private boolean firstInsertPaused;
+        private int clearAllCalls;
 
         private InMemorySnapshotRepository(Map<SnapshotTable, List<String>> initialRows) {
             super(mock(JdbcTemplate.class));
@@ -345,7 +485,22 @@ class SnapshotRoundTripTest {
 
         @Override
         public void insertRow(SnapshotTable table, String json) {
+            if (!firstInsertPaused && firstInsertEntered != null) {
+                firstInsertPaused = true;
+                firstInsertEntered.countDown();
+                try {
+                    if (!allowFirstInsert.await(5, TimeUnit.SECONDS)) {
+                        throw new IllegalStateException("模拟导入等待超时");
+                    }
+                } catch (InterruptedException exception) {
+                    Thread.currentThread().interrupt();
+                    throw new IllegalStateException("模拟导入被中断", exception);
+                }
+            }
             if (table == failureTable) {
+                if (failOnlyOnce) {
+                    failureTable = null;
+                }
                 throw new IllegalStateException("模拟数据库故障：" + table.tableName());
             }
             rows.get(table).add(json);
@@ -383,7 +538,17 @@ class SnapshotRoundTripTest {
 
         @Override
         public void clearAll() {
+            clearAllCalls++;
             rows.values().forEach(List::clear);
+        }
+
+        @Override
+        public Map<String, Long> counts() {
+            Map<String, Long> counts = new java.util.LinkedHashMap<>();
+            for (SnapshotTable table : SnapshotTable.values()) {
+                counts.put(table.tableName(), (long) rows.get(table).size());
+            }
+            return Map.copyOf(counts);
         }
 
         private Map<SnapshotTable, List<String>> rows() {
@@ -402,6 +567,29 @@ class SnapshotRoundTripTest {
             failureTable = table;
         }
 
+        /** 只让第一个进入目标表的导入失败，后续串行请求可继续。 */
+        private void failOnceAt(SnapshotTable table) {
+            failureTable = table;
+            failOnlyOnce = true;
+        }
+
+        /** 暂停首次插入，让测试能精确观察另一管理操作是否越过独占边界。 */
+        private void pauseFirstInsert(CountDownLatch entered, CountDownLatch allow) {
+            firstInsertEntered = entered;
+            allowFirstInsert = allow;
+        }
+
+        /** 模拟真实数据库事务回滚，不经过生产 clearAll 补偿通道。 */
+        private void rollbackImportedRows() {
+            rows.values().forEach(List::clear);
+            importOrder.clear();
+            skillReferencesRestored = false;
+        }
+
+        private int clearAllCalls() {
+            return clearAllCalls;
+        }
+
         /** 在最后一张表插入后、文件交换前触发可控测试动作。 */
         private void afterReleaseInsert(Runnable action) {
             afterReleaseInsert = action;
@@ -410,6 +598,16 @@ class SnapshotRoundTripTest {
 
     /** 为 TransactionTemplate 提供无需数据库连接的本地事务生命周期。 */
     private static final class RecordingTransactionManager extends AbstractPlatformTransactionManager {
+        private final Runnable rollbackAction;
+
+        private RecordingTransactionManager() {
+            this(() -> {});
+        }
+
+        private RecordingTransactionManager(Runnable rollbackAction) {
+            this.rollbackAction = rollbackAction;
+        }
+
         @Override
         protected Object doGetTransaction() {
             return new Object();
@@ -422,6 +620,8 @@ class SnapshotRoundTripTest {
         protected void doCommit(DefaultTransactionStatus status) {}
 
         @Override
-        protected void doRollback(DefaultTransactionStatus status) {}
+        protected void doRollback(DefaultTransactionStatus status) {
+            rollbackAction.run();
+        }
     }
 }

@@ -5,8 +5,9 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.fasterxml.jackson.databind.node.ObjectNode;
 import com.hsmap.factverification.config.WorkbenchProperties;
 import com.hsmap.factverification.shared.ServiceException;
-import java.io.BufferedReader;
+import java.io.BufferedInputStream;
 import java.io.ByteArrayInputStream;
+import java.io.ByteArrayOutputStream;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.OutputStream;
@@ -17,6 +18,7 @@ import java.nio.file.InvalidPathException;
 import java.nio.file.LinkOption;
 import java.nio.file.Path;
 import java.nio.file.StandardCopyOption;
+import java.nio.file.StandardOpenOption;
 import java.security.MessageDigest;
 import java.security.NoSuchAlgorithmException;
 import java.time.Instant;
@@ -29,12 +31,13 @@ import java.util.List;
 import java.util.Map;
 import java.util.Set;
 import java.util.UUID;
-import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.regex.Pattern;
 import java.util.stream.Stream;
 import java.util.zip.ZipEntry;
-import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
+import org.apache.commons.compress.archivers.zip.ZipFile;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -65,6 +68,8 @@ public class SnapshotArchiveService {
             SnapshotTable.RELEASE_BINDING);
     private static final Pattern SHA_256 = Pattern.compile("[0-9a-f]{64}");
     private static final Pattern WINDOWS_ABSOLUTE_PATH = Pattern.compile("^[A-Za-z]:.*");
+    private static final int MAX_MANIFEST_BYTES = 1024 * 1024;
+    private static final int MAX_JSONL_LINE_BYTES = 4 * 1024 * 1024;
 
     private final DemoStateRepository repository;
     private final DemoStateService stateService;
@@ -74,20 +79,24 @@ public class SnapshotArchiveService {
     private final long maxExpandedBytes;
     private final ObjectMapper objectMapper;
     private final TransactionTemplate importTransaction;
-    private final TransactionTemplate cleanupTransaction;
+    private final TransactionTemplate exportTransaction;
+    private final DemoOperationCoordinator operationCoordinator;
 
     /**
      * 注入应用仓储、Task 4 状态门禁、既有 storageRoot、受控上限与数据库事务管理器。
      *
-     * <p>两个 REQUIRES_NEW 模板分别负责正式导入和失败补偿，避免继承 HTTP 上下文中不相关的业务事务。
+     * <p>导入使用 REQUIRES_NEW 事务；导出使用只读 REPEATABLE_READ 稳定快照。二者与 Task 4 reset
+     * 共享单用途协调器，不依赖请求线程的外层事务。
      */
+    @Autowired
     public SnapshotArchiveService(
             DemoStateRepository repository,
             DemoStateService stateService,
             WorkbenchProperties workbenchProperties,
             DemoAdminProperties adminProperties,
             ObjectMapper objectMapper,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            DemoOperationCoordinator operationCoordinator) {
         this.repository = repository;
         this.stateService = stateService;
         this.storageRoot = workbenchProperties.storageRoot().toAbsolutePath().normalize();
@@ -96,7 +105,26 @@ public class SnapshotArchiveService {
         this.maxExpandedBytes = adminProperties.maxExpandedBytes();
         this.objectMapper = objectMapper;
         this.importTransaction = requiresNew(transactionManager);
-        this.cleanupTransaction = requiresNew(transactionManager);
+        this.exportTransaction = stableReadSnapshot(transactionManager);
+        this.operationCoordinator = operationCoordinator;
+    }
+
+    /** 保留 Task 5 已有包内单元测试构造方式；生产 Spring 只选择带共享协调器的构造器。 */
+    SnapshotArchiveService(
+            DemoStateRepository repository,
+            DemoStateService stateService,
+            WorkbenchProperties workbenchProperties,
+            DemoAdminProperties adminProperties,
+            ObjectMapper objectMapper,
+            PlatformTransactionManager transactionManager) {
+        this(
+                repository,
+                stateService,
+                workbenchProperties,
+                adminProperties,
+                objectMapper,
+                transactionManager,
+                new DemoOperationCoordinator());
     }
 
     /**
@@ -105,21 +133,36 @@ public class SnapshotArchiveService {
      * <p>活动工作检查先于 ZIP header；数据库按行写 JSONL，文件按固定目录遍历并计算实际读取字节摘要，manifest 最后写入。
      */
     public void exportTo(OutputStream output) {
-        stateService.requireQuiescentForSnapshotExport();
+        operationCoordinator.exclusively(() -> exportExclusively(output));
+    }
+
+    /** 在 reset/import 不可交错的边界中，用单一数据库快照同时决定应导出的文件集。 */
+    private void exportExclusively(OutputStream output) {
         try {
             Files.createDirectories(storageRoot);
             ZipOutputStream zip = new ZipOutputStream(output, StandardCharsets.UTF_8);
-            Map<String, SnapshotManifest.TableEntry> tables = exportTables(zip);
-            List<SnapshotManifest.FileEntry> files = exportManagedFiles(zip);
+            SnapshotManifest[] manifest = new SnapshotManifest[1];
+            exportTransaction.executeWithoutResult(status -> {
+                stateService.requireQuiescentForSnapshotExport();
+                try {
+                    ExportSelection selection = new ExportSelection();
+                    Map<String, SnapshotManifest.TableEntry> tables = exportTables(zip, selection);
+                    List<SnapshotManifest.FileEntry> files = exportManagedFiles(zip, selection);
+                    manifest[0] = new SnapshotManifest(SnapshotManifest.FORMAT_VERSION, Instant.now(), tables, files);
+                } catch (IOException exception) {
+                    throw new SnapshotIoException(exception);
+                }
+            });
             writeEntry(
                     zip,
                     MANIFEST_ENTRY,
-                    objectMapper.writeValueAsBytes(
-                            new SnapshotManifest(SnapshotManifest.FORMAT_VERSION, Instant.now(), tables, files)));
+                    objectMapper.writeValueAsBytes(manifest[0]));
             zip.finish();
             zip.flush();
         } catch (ServiceException exception) {
             throw exception;
+        } catch (SnapshotIoException exception) {
+            throw new ServiceException("DEMO_SNAPSHOT_EXPORT_FAILED", "比赛状态快照导出失败");
         } catch (IOException exception) {
             throw new ServiceException("DEMO_SNAPSHOT_EXPORT_FAILED", "比赛状态快照导出失败");
         }
@@ -132,11 +175,16 @@ public class SnapshotArchiveService {
      */
     public void importFrom(InputStream input, String confirmationPhrase) {
         stateService.requireImportConfirmationPhrase(confirmationPhrase);
+        operationCoordinator.exclusively(() -> importExclusively(input));
+    }
+
+    /** 确认语通过后将两次空白检查、完整预检、事务与目录安装放在同一独占边界。 */
+    private void importExclusively(InputStream input) {
         stateService.requireBlank();
         UUID operationId = UUID.randomUUID();
-        Path operationRoot = operationRoot(operationId);
+        Path operationRoot = null;
         try {
-            Files.createDirectories(operationRoot);
+            operationRoot = prepareOperationRoot(operationId);
             Path archivePath = copyArchive(input, operationRoot.resolve("archive.zip"));
             StagedSnapshot staged = validateStagedArchive(operationRoot, archivePath);
             preflightImportRows(staged);
@@ -147,7 +195,9 @@ public class SnapshotArchiveService {
         } catch (IOException exception) {
             throw new ServiceException("DEMO_SNAPSHOT_IMPORT_FAILED", "比赛状态快照导入失败");
         } finally {
-            deleteTreeQuietly(operationRoot);
+            if (operationRoot != null) {
+                deleteTreeQuietly(operationRoot);
+            }
         }
     }
 
@@ -158,32 +208,45 @@ public class SnapshotArchiveService {
      */
     StagedSnapshot validateAndStage(Path zipPath) {
         UUID operationId = UUID.randomUUID();
-        Path operationRoot = operationRoot(operationId);
+        Path operationRoot = null;
         try {
-            Files.createDirectories(operationRoot);
+            operationRoot = prepareOperationRoot(operationId);
             try (InputStream input = Files.newInputStream(zipPath)) {
                 Path archivePath = copyArchive(input, operationRoot.resolve("archive.zip"));
                 return validateStagedArchive(operationRoot, archivePath);
             }
         } catch (ServiceException exception) {
-            deleteTreeQuietly(operationRoot);
+            if (operationRoot != null) {
+                deleteTreeQuietly(operationRoot);
+            }
             throw exception;
         } catch (IOException exception) {
-            deleteTreeQuietly(operationRoot);
+            if (operationRoot != null) {
+                deleteTreeQuietly(operationRoot);
+            }
             throw new ServiceException("DEMO_SNAPSHOT_IMPORT_FAILED", "比赛状态快照暂存失败");
         }
     }
 
     /** 按枚举顺序写七个 JSONL entry，并记录实际行数与完整文件摘要。 */
-    private Map<String, SnapshotManifest.TableEntry> exportTables(ZipOutputStream zip) throws IOException {
+    private Map<String, SnapshotManifest.TableEntry> exportTables(ZipOutputStream zip, ExportSelection selection)
+            throws IOException {
         Map<String, SnapshotManifest.TableEntry> result = new LinkedHashMap<>();
         for (SnapshotTable table : SnapshotTable.values()) {
             zip.putNextEntry(new ZipEntry(tableEntryName(table)));
             MessageDigest digest = sha256Digest();
             long[] rows = {0L};
             repository.exportRows(table, json -> {
-                String normalized = table == SnapshotTable.VERIFICATION_TASK ? normalizeExportTaskRow(json) : json;
+                String normalized = json;
+                if (table == SnapshotTable.VERIFICATION_TASK) {
+                    normalized = normalizeExportTaskRow(json, selection);
+                } else if (table == SnapshotTable.SKILL_VERSION) {
+                    selection.skillVersionIds().add(requiredUuid(requireObjectRow(json), "id"));
+                }
                 byte[] bytes = normalized.getBytes(StandardCharsets.UTF_8);
+                if (bytes.length > MAX_JSONL_LINE_BYTES) {
+                    throw new ServiceException("DEMO_SNAPSHOT_JSONL_LINE_TOO_LARGE", "快照表 JSONL 单行大小超过限制");
+                }
                 zip.write(bytes);
                 zip.write('\n');
                 digest.update(bytes);
@@ -196,29 +259,19 @@ public class SnapshotArchiveService {
         return Map.copyOf(result);
     }
 
-    /** 遍历三个受管目录，忽略 Git 边界和本服务暂存物，并拒绝可能越界读取的符号链接。 */
-    private List<SnapshotManifest.FileEntry> exportManagedFiles(ZipOutputStream zip) throws IOException {
-        List<Path> files = new ArrayList<>();
-        for (String directoryName : MANAGED_DIRECTORIES) {
-            Path directory = requireWithinStorageRoot(storageRoot.resolve(directoryName));
-            if (!Files.exists(directory)) {
-                continue;
-            }
-            try (Stream<Path> paths = Files.walk(directory)) {
-                for (Path path : paths.sorted().toList()) {
-                    Path relative = storageRoot.relativize(path);
-                    if (containsIgnoredSegment(relative)) {
-                        continue;
-                    }
-                    if (Files.isSymbolicLink(path)) {
-                        throw new ServiceException("DEMO_SNAPSHOT_FILE_INVALID", "受管目录包含不允许导出的符号链接");
-                    }
-                    if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
-                        files.add(path);
-                    }
-                }
-            }
+    /**
+     * 只导出当前七表快照实际引用的上传文件与 Skill 版本目录。
+     *
+     * <p>这使活动检查后新出现的孤儿文件不会混入快照，同时避免对普通核验表加长时间排他锁。
+     */
+    private List<SnapshotManifest.FileEntry> exportManagedFiles(ZipOutputStream zip, ExportSelection selection)
+            throws IOException {
+        Set<Path> selected = new LinkedHashSet<>(selection.uploadFiles());
+        for (UUID versionId : selection.skillVersionIds()) {
+            collectVersionFiles(selected, "skill-snapshots", versionId);
+            collectVersionFiles(selected, "skill-runtime", versionId);
         }
+        List<Path> files = new ArrayList<>(selected);
         files.sort(Comparator.comparing(path -> archivePath(storageRoot.relativize(path))));
         List<SnapshotManifest.FileEntry> manifestFiles = new ArrayList<>();
         for (Path file : files) {
@@ -242,8 +295,35 @@ public class SnapshotArchiveService {
         return List.copyOf(manifestFiles);
     }
 
+    /** 收集某个数据库 Skill 版本的固定目录；草稿版本可以尚未生成冻结文件。 */
+    private void collectVersionFiles(Set<Path> selected, String managedRoot, UUID versionId) throws IOException {
+        Path versionRoot = requireWithinStorageRoot(storageRoot.resolve(managedRoot).resolve(versionId.toString()));
+        if (!Files.exists(versionRoot, LinkOption.NOFOLLOW_LINKS)) {
+            return;
+        }
+        if (Files.isSymbolicLink(versionRoot)
+                || !Files.isDirectory(versionRoot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new ServiceException("DEMO_SNAPSHOT_FILE_INVALID", "Skill 版本目录不是受控普通目录");
+        }
+        requirePhysicalStoragePath(versionRoot);
+        try (Stream<Path> paths = Files.walk(versionRoot)) {
+            for (Path path : paths.sorted().toList()) {
+                Path relative = storageRoot.relativize(path);
+                if (containsIgnoredSegment(relative)) {
+                    continue;
+                }
+                if (Files.isSymbolicLink(path)) {
+                    throw new ServiceException("DEMO_SNAPSHOT_FILE_INVALID", "受管目录包含不允许导出的符号链接");
+                }
+                if (Files.isRegularFile(path, LinkOption.NOFOLLOW_LINKS)) {
+                    selected.add(path);
+                }
+            }
+        }
+    }
+
     /** 把 verification_task.upload_path 变为环境无关的 uploads/{taskId}/{fileName}。 */
-    private String normalizeExportTaskRow(String json) {
+    private String normalizeExportTaskRow(String json, ExportSelection selection) {
         try {
             ObjectNode row = requireObjectRow(json);
             String taskId = requiredText(row, "id");
@@ -264,7 +344,9 @@ public class SnapshotArchiveService {
             if (!upload.toRealPath().startsWith(realRoot)) {
                 throw new ServiceException("DEMO_SNAPSHOT_UPLOAD_PATH_INVALID", "任务上传文件越出当前受管 uploads 目录");
             }
+            requirePhysicalStoragePath(upload);
             row.put("upload_path", "uploads/" + taskId + "/" + relative.getFileName());
+            selection.uploadFiles().add(upload);
             return objectMapper.writeValueAsString(row);
         } catch (ServiceException exception) {
             throw exception;
@@ -276,7 +358,9 @@ public class SnapshotArchiveService {
     /** 流式复制原始请求并独立累计压缩包字节，超过上限时不再读取或解析 ZIP。 */
     private Path copyArchive(InputStream input, Path archivePath) throws IOException {
         long total = 0L;
-        try (OutputStream output = Files.newOutputStream(archivePath)) {
+        requireSafePhysicalParent(archivePath.getParent(), archivePath.getParent());
+        try (OutputStream output = Files.newOutputStream(
+                archivePath, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
             byte[] buffer = new byte[8192];
             int read;
             while ((read = input.read(buffer)) != -1) {
@@ -294,16 +378,26 @@ public class SnapshotArchiveService {
     private StagedSnapshot validateStagedArchive(Path operationRoot, Path archivePath) throws IOException {
         Path expandedRoot = operationRoot.resolve("expanded").normalize();
         requireWithinOperation(operationRoot, expandedRoot);
-        Files.createDirectories(expandedRoot);
+        createSafeDirectories(operationRoot, expandedRoot);
         Map<String, StagedEntry> entries = new LinkedHashMap<>();
         long expandedBytes = 0L;
         int entryCount = 0;
-        try (ZipInputStream input = new ZipInputStream(Files.newInputStream(archivePath), StandardCharsets.UTF_8)) {
-            ZipEntry entry;
-            while ((entry = input.getNextEntry()) != null) {
+        try (ZipFile archive = ZipFile.builder()
+                .setPath(archivePath)
+                .setMaxNumberOfDisks(1)
+                .get()) {
+            var archiveEntries = archive.getEntriesInPhysicalOrder();
+            while (archiveEntries.hasMoreElements()) {
+                ZipArchiveEntry entry = archiveEntries.nextElement();
                 entryCount++;
                 if (entryCount > maxEntryCount) {
                     throw new ServiceException("DEMO_SNAPSHOT_ENTRY_LIMIT_EXCEEDED", "快照文件数量超过限制");
+                }
+                if (entry.isUnixSymlink()) {
+                    throw new ServiceException("DEMO_SNAPSHOT_SYMLINK_ENTRY", "快照不允许包含符号链接 entry");
+                }
+                if (!archive.canReadEntryData(entry)) {
+                    throw new ServiceException("DEMO_SNAPSHOT_ZIP_FEATURE_UNSUPPORTED", "快照包含不支持的 ZIP 特性");
                 }
                 String normalizedName = validateEntryName(entry.getName(), entry.isDirectory());
                 if (entries.containsKey(normalizedName)) {
@@ -318,10 +412,12 @@ public class SnapshotArchiveService {
                     throw illegalPath();
                 }
                 if (entry.isDirectory()) {
-                    Files.createDirectories(target);
+                    createSafeDirectories(operationRoot, target);
                 } else {
-                    Files.createDirectories(target.getParent());
-                    try (OutputStream output = Files.newOutputStream(target)) {
+                    createSafeDirectories(operationRoot, target.getParent());
+                    try (InputStream input = archive.getInputStream(entry);
+                            OutputStream output = Files.newOutputStream(
+                                    target, StandardOpenOption.CREATE_NEW, StandardOpenOption.WRITE)) {
                         byte[] buffer = new byte[8192];
                         int read;
                         while ((read = input.read(buffer)) != -1) {
@@ -334,7 +430,6 @@ public class SnapshotArchiveService {
                     }
                 }
                 entries.put(normalizedName, new StagedEntry(target, entry.isDirectory()));
-                input.closeEntry();
             }
         }
         SnapshotManifest manifest = validateManifest(expandedRoot, entries);
@@ -420,7 +515,7 @@ public class SnapshotArchiveService {
         }
         SnapshotManifest manifest;
         try {
-            manifest = objectMapper.readValue(manifestEntry.path().toFile(), SnapshotManifest.class);
+            manifest = objectMapper.readValue(readLimitedBytes(manifestEntry.path(), MAX_MANIFEST_BYTES), SnapshotManifest.class);
         } catch (IOException exception) {
             throw new ServiceException("DEMO_SNAPSHOT_MANIFEST_INVALID", "快照 manifest 无法解析");
         }
@@ -499,7 +594,11 @@ public class SnapshotArchiveService {
 
     /** manifest 文件路径不含 files 前缀，但采用与 ZIP entry 相同的受管根和遍历规则。 */
     private String validateManifestFilePath(String rawPath) {
-        if (rawPath == null || rawPath.startsWith(FILES_ROOT + "/")) {
+        if (rawPath == null
+                || rawPath.startsWith("/")
+                || rawPath.indexOf('\\') >= 0
+                || WINDOWS_ABSOLUTE_PATH.matcher(rawPath).matches()
+                || rawPath.startsWith(FILES_ROOT + "/")) {
             throw illegalPath();
         }
         String validated = validateEntryName(FILES_ROOT + "/" + rawPath, false);
@@ -508,27 +607,24 @@ public class SnapshotArchiveService {
 
     /** 逐行确认 JSONL 每行都是 JSON object，并返回精确非空行数。 */
     private long validateJsonLines(Path path) throws IOException {
-        long rows = 0L;
-        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                if (line.isBlank()) {
-                    throw new ServiceException("DEMO_SNAPSHOT_JSONL_INVALID", "快照表 JSONL 包含空行");
-                }
-                try {
-                    JsonNode node = objectMapper.readTree(line);
-                    if (node == null || !node.isObject()) {
-                        throw new ServiceException("DEMO_SNAPSHOT_JSONL_INVALID", "快照表 JSONL 行不是 JSON object");
-                    }
-                } catch (ServiceException exception) {
-                    throw exception;
-                } catch (IOException exception) {
-                    throw new ServiceException("DEMO_SNAPSHOT_JSONL_INVALID", "快照表 JSONL 无法解析");
-                }
-                rows++;
+        long[] rows = {0L};
+        readUtf8Lines(path, MAX_JSONL_LINE_BYTES, line -> {
+            if (line.isBlank()) {
+                throw new ServiceException("DEMO_SNAPSHOT_JSONL_INVALID", "快照表 JSONL 包含空行");
             }
-        }
-        return rows;
+            try {
+                JsonNode node = objectMapper.readTree(line);
+                if (node == null || !node.isObject()) {
+                    throw new ServiceException("DEMO_SNAPSHOT_JSONL_INVALID", "快照表 JSONL 行不是 JSON object");
+                }
+            } catch (ServiceException exception) {
+                throw exception;
+            } catch (IOException exception) {
+                throw new ServiceException("DEMO_SNAPSHOT_JSONL_INVALID", "快照表 JSONL 无法解析");
+            }
+            rows[0]++;
+        });
+        return rows[0];
     }
 
     /**
@@ -546,9 +642,13 @@ public class SnapshotArchiveService {
         readRows(staged, SnapshotTable.VERIFICATION_TASK, json -> normalizeImportedTaskRow(staged, json));
     }
 
-    /** 在独立事务内按固定顺序插入行；任一异常都执行数据库与正式目录空白补偿。 */
+    /**
+     * 在独立事务内按固定顺序插入行并安装文件。
+     *
+     * <p>数据库写入失败只依赖当前事务回滚，不另起 clearAll；文件仅记录并撤销本次已成功移入的目录。
+     */
     private void applyValidatedSnapshot(StagedSnapshot staged) {
-        AtomicBoolean fileInstallStarted = new AtomicBoolean(false);
+        List<InstalledDirectory> installedDirectories = new ArrayList<>();
         try {
             importTransaction.executeWithoutResult(status -> {
                 List<SkillReferenceRestore> references = importSkillRows(staged);
@@ -558,11 +658,10 @@ public class SnapshotArchiveService {
                 for (SnapshotTable table : IMPORT_ORDER.subList(2, IMPORT_ORDER.size())) {
                     importTable(staged, table);
                 }
-                fileInstallStarted.set(true);
-                installManagedDirectories(staged);
+                installManagedDirectories(staged, installedDirectories);
             });
         } catch (RuntimeException exception) {
-            compensateFailedImport(fileInstallStarted.get(), exception);
+            rollbackInstalledDirectories(installedDirectories, exception);
             throw exception;
         }
     }
@@ -617,11 +716,8 @@ public class SnapshotArchiveService {
     /** 按行读取已校验 JSONL；校验和导入使用同一暂存文件，不接受第二个输入来源。 */
     private void readRows(StagedSnapshot staged, SnapshotTable table, RowImporter importer) {
         Path path = staged.expandedRoot().resolve(tableEntryName(table));
-        try (BufferedReader reader = Files.newBufferedReader(path, StandardCharsets.UTF_8)) {
-            String line;
-            while ((line = reader.readLine()) != null) {
-                importer.accept(line);
-            }
+        try {
+            readUtf8Lines(path, MAX_JSONL_LINE_BYTES, importer);
         } catch (ServiceException exception) {
             throw exception;
         } catch (IOException exception) {
@@ -634,7 +730,7 @@ public class SnapshotArchiveService {
      *
      * <p>跨三个目录不存在单一文件系统事务，因此任何中途异常由外层统一删除已移动目录并重建空白边界。
      */
-    private void installManagedDirectories(StagedSnapshot staged) {
+    private void installManagedDirectories(StagedSnapshot staged, List<InstalledDirectory> installedDirectories) {
         try {
             for (String directoryName : MANAGED_DIRECTORIES) {
                 Path source = requireWithinOperation(
@@ -645,12 +741,14 @@ public class SnapshotArchiveService {
                 if (!isBlankDirectory(target)) {
                     throw new ServiceException("DEMO_STATE_NOT_BLANK", "正式运行目录在导入期间变为非空");
                 }
+                boolean targetExisted = Files.exists(target, LinkOption.NOFOLLOW_LINKS);
                 deleteTree(target);
                 try {
                     Files.move(source, target, StandardCopyOption.ATOMIC_MOVE);
                 } catch (AtomicMoveNotSupportedException exception) {
                     throw new ServiceException("DEMO_SNAPSHOT_STORAGE_SWAP_FAILED", "当前文件系统不支持快照目录原子交换");
                 }
+                installedDirectories.add(new InstalledDirectory(target, targetExisted));
                 Files.writeString(target.resolve(GIT_KEEP), "", StandardCharsets.UTF_8);
             }
         } catch (ServiceException exception) {
@@ -660,50 +758,20 @@ public class SnapshotArchiveService {
         }
     }
 
-    /** 失败时先恢复文件空白边界，再以独立事务清理固定七表；补偿异常作为 suppressed 保留。 */
-    private void compensateFailedImport(boolean fileInstallStarted, RuntimeException original) {
+    /** 按逆序撤销本次已安装目录，并精确恢复导入前“缺失或仅 .gitkeep”形态。 */
+    private void rollbackInstalledDirectories(List<InstalledDirectory> installedDirectories, RuntimeException original) {
         try {
-            if (fileInstallStarted) {
-                restoreBlankManagedDirectories();
-            } else {
-                ensureBlankManagedDirectoriesExist();
-            }
-        } catch (RuntimeException cleanupFailure) {
-            original.addSuppressed(cleanupFailure);
-        }
-        try {
-            cleanupTransaction.executeWithoutResult(status -> repository.clearAll());
-        } catch (RuntimeException cleanupFailure) {
-            original.addSuppressed(cleanupFailure);
-        }
-    }
-
-    /** 删除本次可能已移动的正式目录并重建 .gitkeep，恢复导入前空白状态。 */
-    private void restoreBlankManagedDirectories() {
-        try {
-            for (String directoryName : MANAGED_DIRECTORIES) {
-                Path target = requireWithinStorageRoot(storageRoot.resolve(directoryName));
-                deleteTree(target);
-                Files.createDirectories(target);
-                Files.writeString(target.resolve(GIT_KEEP), "", StandardCharsets.UTF_8);
-            }
-        } catch (IOException exception) {
-            throw new ServiceException("DEMO_SNAPSHOT_ROLLBACK_FAILED", "快照失败后运行目录无法恢复为空白状态");
-        }
-    }
-
-    /** 数据库在目录交换前失败时只补建原本允许缺失的空目录，不删除可能并发出现的内容。 */
-    private void ensureBlankManagedDirectoriesExist() {
-        try {
-            for (String directoryName : MANAGED_DIRECTORIES) {
-                Path target = requireWithinStorageRoot(storageRoot.resolve(directoryName));
-                Files.createDirectories(target);
-                if (isBlankDirectory(target)) {
-                    Files.writeString(target.resolve(GIT_KEEP), "", StandardCharsets.UTF_8);
+            for (int index = installedDirectories.size() - 1; index >= 0; index--) {
+                InstalledDirectory installed = installedDirectories.get(index);
+                deleteTree(installed.target());
+                if (installed.existedBefore()) {
+                    Files.createDirectories(installed.target());
+                    Files.writeString(installed.target().resolve(GIT_KEEP), "", StandardCharsets.UTF_8);
                 }
             }
         } catch (IOException exception) {
-            throw new ServiceException("DEMO_SNAPSHOT_ROLLBACK_FAILED", "快照失败后运行目录无法恢复为空白状态");
+            original.addSuppressed(
+                    new ServiceException("DEMO_SNAPSHOT_ROLLBACK_FAILED", "快照失败后本次安装目录无法撤销"));
         }
     }
 
@@ -780,6 +848,60 @@ public class SnapshotArchiveService {
         }
     }
 
+    /**
+     * 以有界字节缓冲逐行读取 UTF-8 JSONL，绝不在确认单行大小前调用 readLine。
+     *
+     * <p>包内可见的上限参数只供小数据测试触发同一生产分支；业务入口固定使用 4 MiB 常量。
+     */
+    static void readUtf8Lines(Path path, int maxLineBytes, RowImporter consumer) throws IOException {
+        try (InputStream input = new BufferedInputStream(Files.newInputStream(path))) {
+            ByteArrayOutputStream line = new ByteArrayOutputStream(Math.min(maxLineBytes, 8192));
+            int value;
+            while ((value = input.read()) != -1) {
+                if (value == '\n') {
+                    consumer.accept(decodeLine(line));
+                    line.reset();
+                    continue;
+                }
+                if (line.size() >= maxLineBytes) {
+                    throw new ServiceException("DEMO_SNAPSHOT_JSONL_LINE_TOO_LARGE", "快照表 JSONL 单行大小超过限制");
+                }
+                line.write(value);
+            }
+            if (line.size() > 0) {
+                consumer.accept(decodeLine(line));
+            }
+        }
+    }
+
+    /** 将已通过字节上限的单行解码，并兼容 ZIP 生成器使用的 CRLF。 */
+    private static String decodeLine(ByteArrayOutputStream line) {
+        byte[] bytes = line.toByteArray();
+        int length = bytes.length;
+        if (length > 0 && bytes[length - 1] == '\r') {
+            length--;
+        }
+        return new String(bytes, 0, length, StandardCharsets.UTF_8);
+    }
+
+    /** 有界读取小型 manifest；业务入口固定 1 MiB，测试可用小上限验证早停。 */
+    static byte[] readLimitedBytes(Path path, int maxBytes) throws IOException {
+        try (InputStream input = Files.newInputStream(path);
+                ByteArrayOutputStream output = new ByteArrayOutputStream(Math.min(maxBytes, 8192))) {
+            byte[] buffer = new byte[8192];
+            int read;
+            int total = 0;
+            while ((read = input.read(buffer, 0, Math.min(buffer.length, maxBytes - total + 1))) != -1) {
+                total += read;
+                if (total > maxBytes) {
+                    throw new ServiceException("DEMO_SNAPSHOT_MANIFEST_TOO_LARGE", "快照 manifest 大小超过限制");
+                }
+                output.write(buffer, 0, read);
+            }
+            return output.toByteArray();
+        }
+    }
+
     /** 校验路径规范化后仍处于当前 storageRoot。 */
     private Path requireWithinStorageRoot(Path candidate) {
         Path normalized = candidate.toAbsolutePath().normalize();
@@ -787,6 +909,83 @@ public class SnapshotArchiveService {
             throw illegalPath();
         }
         return normalized;
+    }
+
+    /** 拒绝 storageRoot 与候选文件之间的任何 symlink，并再次比对最终物理位置。 */
+    private void requirePhysicalStoragePath(Path candidate) throws IOException {
+        Path normalized = requireWithinStorageRoot(candidate);
+        Path current = storageRoot;
+        if (Files.isSymbolicLink(current)) {
+            throw new ServiceException("DEMO_SNAPSHOT_FILE_INVALID", "受管文件路径包含符号链接");
+        }
+        for (Path part : storageRoot.relativize(normalized)) {
+            current = current.resolve(part);
+            if (Files.isSymbolicLink(current)) {
+                throw new ServiceException("DEMO_SNAPSHOT_FILE_INVALID", "受管文件路径包含符号链接");
+            }
+        }
+        if (!normalized.toRealPath().startsWith(storageRoot.toRealPath())) {
+            throw new ServiceException("DEMO_SNAPSHOT_FILE_INVALID", "受管文件物理路径越出 storageRoot");
+        }
+    }
+
+    /**
+     * 逐层创建本次暂存目录，且对每个已有层级使用 NOFOLLOW_LINKS 拒绝符号链接。
+     *
+     * <p>每创建或复用一层都比对物理路径，确保 `.demo-import/operation/expanded` 不会通过预置中间路径逃离 storageRoot。
+     */
+    private void createSafeDirectories(Path trustedRoot, Path directory) throws IOException {
+        Path root = trustedRoot.toAbsolutePath().normalize();
+        Path target = requireWithinOperation(root, directory);
+        if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)
+                || Files.isSymbolicLink(root)
+                || !Files.isDirectory(root, LinkOption.NOFOLLOW_LINKS)) {
+            throw invalidStagingPath();
+        }
+        Path physicalRoot = root.toRealPath(LinkOption.NOFOLLOW_LINKS);
+        Path current = root;
+        Path relative = root.relativize(target);
+        for (Path part : relative) {
+            current = current.resolve(part);
+            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(current)
+                        || !Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                    throw invalidStagingPath();
+                }
+            } else {
+                try {
+                    Files.createDirectory(current);
+                } catch (java.nio.file.FileAlreadyExistsException exception) {
+                    if (Files.isSymbolicLink(current)
+                            || !Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                        throw invalidStagingPath();
+                    }
+                }
+            }
+            if (!current.toRealPath(LinkOption.NOFOLLOW_LINKS).startsWith(physicalRoot)) {
+                throw invalidStagingPath();
+            }
+        }
+    }
+
+    /** 创建不可预测 operationId 目录，并从 storageRoot 开始逐层验证物理位置。 */
+    private Path prepareOperationRoot(UUID operationId) throws IOException {
+        if (Files.exists(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
+            if (Files.isSymbolicLink(storageRoot)
+                    || !Files.isDirectory(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
+                throw invalidStagingPath();
+            }
+        } else {
+            Files.createDirectories(storageRoot);
+        }
+        Path root = operationRoot(operationId);
+        createSafeDirectories(storageRoot, root);
+        return root;
+    }
+
+    /** 确认已准备的目录仍是普通目录，用于创建 archive.zip 前再次收紧竞态窗口。 */
+    private void requireSafePhysicalParent(Path trustedRoot, Path directory) throws IOException {
+        createSafeDirectories(trustedRoot, directory);
     }
 
     /** 校验暂存路径始终处于本次 operationId 根，不能借路径文本访问其他导入现场。 */
@@ -880,6 +1079,14 @@ public class SnapshotArchiveService {
         return template;
     }
 
+    /** 七表导出固定使用独立的只读 REPEATABLE_READ，使每张表不会看到不同提交时点。 */
+    private static TransactionTemplate stableReadSnapshot(PlatformTransactionManager transactionManager) {
+        TransactionTemplate template = requiresNew(transactionManager);
+        template.setReadOnly(true);
+        template.setIsolationLevel(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+        return template;
+    }
+
     /** 递归删除明确验证过的具体操作/受管目录；调用方不得传入宽泛根。 */
     private static void deleteTree(Path root) throws IOException {
         if (!Files.exists(root, LinkOption.NOFOLLOW_LINKS)) {
@@ -900,6 +1107,9 @@ public class SnapshotArchiveService {
 
     /** 暂存清理失败不改变已确定的导入结果；遗留目录仍被 .demo-* 规则排除在后续快照外。 */
     private static void deleteTreeQuietly(Path root) {
+        if (root == null) {
+            return;
+        }
         try {
             deleteTree(root);
         } catch (IOException exception) {
@@ -912,6 +1122,11 @@ public class SnapshotArchiveService {
         return new ServiceException("DEMO_SNAPSHOT_PATH_INVALID", "快照包含非法文件路径");
     }
 
+    /** 暂存中间路径的符号链接或物理越界使用独立错误码，不回显本机路径。 */
+    private static ServiceException invalidStagingPath() {
+        return new ServiceException("DEMO_SNAPSHOT_STAGING_PATH_INVALID", "快照包含非法暂存路径");
+    }
+
     /** 已完整校验的本次暂存根、展开根和 manifest；不向 HTTP 调用方暴露真实路径。 */
     record StagedSnapshot(Path operationRoot, Path expandedRoot, SnapshotManifest manifest) {}
 
@@ -921,10 +1136,27 @@ public class SnapshotArchiveService {
     /** Skill 二阶段引用回填所需的原始 UUID。 */
     private record SkillReferenceRestore(UUID id, UUID parentVersionId, UUID registeredEvaluationId) {}
 
+    /** 七表快照读取时同步收集实际文件引用，避免事后再查数据库产生跨视图。 */
+    private record ExportSelection(Set<Path> uploadFiles, Set<UUID> skillVersionIds) {
+        private ExportSelection() {
+            this(new LinkedHashSet<>(), new LinkedHashSet<>());
+        }
+    }
+
+    /** 记录本次已移入的正式目录及其导入前空白形态，补偿不触碰其他目录。 */
+    private record InstalledDirectory(Path target, boolean existedBefore) {}
+
     /** 导入单行的内部回调；业务异常保持 RuntimeException 语义触发事务回滚。 */
     @FunctionalInterface
-    private interface RowImporter {
+    interface RowImporter {
         void accept(String json);
+    }
+
+    /** 把事务回调内的受检 ZIP I/O 恢复到外层统一业务异常边界。 */
+    private static final class SnapshotIoException extends RuntimeException {
+        private SnapshotIoException(IOException cause) {
+            super(cause);
+        }
     }
 
     /** 把 Stream lambda 中的受检删除异常恢复到显式 IOException 边界。 */

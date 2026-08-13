@@ -6,6 +6,7 @@ import java.util.Map;
 import java.util.UUID;
 import java.util.concurrent.CompletableFuture;
 import java.util.concurrent.CompletionException;
+import org.springframework.beans.factory.annotation.Autowired;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.TransactionDefinition;
@@ -25,6 +26,7 @@ public class DemoStateService {
     private final DemoStateRepository repository;
     private final ManagedStorageSwap storageSwap;
     private final TransactionTemplate resetTransactionTemplate;
+    private final DemoOperationCoordinator operationCoordinator;
     private final Object idempotencyMonitor = new Object();
     private final Map<String, CompletableFuture<DemoStateView>> resetResults = new LinkedHashMap<>();
 
@@ -33,14 +35,25 @@ public class DemoStateService {
      *
      * <p>此处新建只属于 reset 的 REQUIRES_NEW 模板，不修改也不复用其他业务服务可能正在参与的 REQUIRED 模板。
      */
+    @Autowired
     public DemoStateService(
             DemoStateRepository repository,
             ManagedStorageSwap storageSwap,
-            PlatformTransactionManager transactionManager) {
+            PlatformTransactionManager transactionManager,
+            DemoOperationCoordinator operationCoordinator) {
         this.repository = repository;
         this.storageSwap = storageSwap;
+        this.operationCoordinator = operationCoordinator;
         this.resetTransactionTemplate = new TransactionTemplate(transactionManager);
         this.resetTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
+    }
+
+    /** Task 4 旧单元测试的包内构造边界；生产装配始终注入共享协调器。 */
+    DemoStateService(
+            DemoStateRepository repository,
+            ManagedStorageSwap storageSwap,
+            PlatformTransactionManager transactionManager) {
+        this(repository, storageSwap, transactionManager, new DemoOperationCoordinator());
     }
 
     /** 返回固定比赛数据表和受管目录的当前状态，不向客户端暴露真实文件路径。 */
@@ -73,7 +86,7 @@ public class DemoStateService {
             return completedResult(result);
         }
         try {
-            DemoStateView resetState = performReset(confirmationPhrase);
+            DemoStateView resetState = operationCoordinator.exclusively(this::performReset);
             result.complete(resetState);
             return resetState;
         } catch (RuntimeException exception) {
@@ -87,7 +100,7 @@ public class DemoStateService {
      *
      * <p>只有独立事务的 executeWithoutResult 正常返回（即已完成 commit）后才会销毁目录暂存；异常路径始终恢复目录。
      */
-    private DemoStateView performReset(String confirmationPhrase) {
+    private DemoStateView performReset() {
         requireNoActiveWork();
         ManagedStorageSwap.PreparedStorageSwap prepared = storageSwap.prepare(UUID.randomUUID());
         try {

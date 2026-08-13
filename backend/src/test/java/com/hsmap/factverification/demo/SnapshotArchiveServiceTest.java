@@ -21,9 +21,14 @@ import java.util.ArrayList;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import java.util.UUID;
+import java.util.concurrent.CopyOnWriteArrayList;
 import java.util.zip.ZipEntry;
 import java.util.zip.ZipInputStream;
 import java.util.zip.ZipOutputStream;
+import org.apache.commons.compress.archivers.zip.UnixStat;
+import org.apache.commons.compress.archivers.zip.ZipArchiveEntry;
+import org.apache.commons.compress.archivers.zip.ZipArchiveOutputStream;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 import org.springframework.jdbc.core.JdbcTemplate;
@@ -171,6 +176,55 @@ class SnapshotArchiveServiceTest {
     }
 
     /**
+     * 测试场景：ZIP 中的 Unix mode 明确声明一个符号链接 entry。
+     * 前置条件：使用 Commons Compress 写入真实的 symlink mode，而不是仅用文件名模拟。
+     * 期望结果：在展开目标文件前拒绝归档。
+     * 断言重点：导入器必须依据可信库解析 Unix mode，不能把链接当普通文件。
+     */
+    @Test
+    void rejectsUnixSymlinkZipEntry() throws Exception {
+        Path zip = Files.createTempFile(temporaryRoot, "symlink-snapshot-", ".zip");
+        try (ZipArchiveOutputStream output = new ZipArchiveOutputStream(zip)) {
+            ZipArchiveEntry entry = new ZipArchiveEntry("files/uploads/task/material-link");
+            entry.setUnixMode(UnixStat.LINK_FLAG | 0777);
+            output.putArchiveEntry(entry);
+            output.write("../../outside".getBytes(StandardCharsets.UTF_8));
+            output.closeArchiveEntry();
+        }
+
+        assertThatThrownBy(() -> archive(mock(DemoStateRepository.class), mock(DemoStateService.class))
+                        .validateAndStage(zip))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("符号链接");
+    }
+
+    /**
+     * 测试场景：攻击者预先把 storageRoot/.demo-import 建成指向根外的符号链接。
+     * 前置条件：平台支持创建符号链接，根外目标是 JUnit 临时目录。
+     * 期望结果：还未复制 ZIP 时就拒绝操作。
+     * 断言重点：任何已有的中间路径都不得通过 symlink 逃离本次 storageRoot。
+     */
+    @Test
+    void rejectsSymlinkInDemoImportIntermediatePath() throws Exception {
+        Path storage = temporaryRoot.resolve("storage");
+        Path outside = temporaryRoot.resolve("outside");
+        Files.createDirectories(storage);
+        Files.createDirectories(outside);
+        try {
+            Files.createSymbolicLink(storage.resolve(".demo-import"), outside);
+        } catch (UnsupportedOperationException | java.nio.file.FileSystemException exception) {
+            org.junit.jupiter.api.Assumptions.abort("当前文件系统不支持测试符号链接");
+        }
+        Path zip = writeZip(validArchiveEntries(SnapshotManifest.FORMAT_VERSION));
+
+        assertThatThrownBy(() -> archive(mock(DemoStateRepository.class), mock(DemoStateService.class))
+                        .validateAndStage(zip))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("非法暂存路径");
+        assertThat(outside).isEmptyDirectory();
+    }
+
+    /**
      * 测试场景：manifest 版本不是唯一支持的 v1。
      * 前置条件：七张表文件和摘要均完整，仅替换 formatVersion。
      * 期望结果：版本校验失败且数据库保持未触碰。
@@ -228,6 +282,112 @@ class SnapshotArchiveServiceTest {
                         .validateAndStage(zip))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("SHA-256");
+    }
+
+    /**
+     * 测试场景：manifest 文件清单使用 /uploads/... 绝对形式。
+     * 前置条件：ZIP 内的实际 entry 仍位于合法 files/uploads 根。
+     * 期望结果：manifest 路径在拼接 files/ 之前直接被拒绝。
+     * 断言重点：不得把前导斜杠解释成可归一化的相对路径。
+     */
+    @Test
+    void rejectsAbsoluteManifestFilePath() throws Exception {
+        Map<String, byte[]> entries = validArchiveEntries(SnapshotManifest.FORMAT_VERSION);
+        byte[] material = "material".getBytes(StandardCharsets.UTF_8);
+        entries.put("files/uploads/task/material.md", material);
+        SnapshotManifest base = OBJECT_MAPPER.readValue(entries.get("manifest.json"), SnapshotManifest.class);
+        entries.put(
+                "manifest.json",
+                OBJECT_MAPPER.writeValueAsBytes(new SnapshotManifest(
+                        base.formatVersion(),
+                        base.createdAt(),
+                        base.tables(),
+                        List.of(new SnapshotManifest.FileEntry("/uploads/task/material.md", 8, sha256(material))))));
+
+        assertThatThrownBy(() -> archive(mock(DemoStateRepository.class), mock(DemoStateService.class))
+                        .validateAndStage(writeZip(entries)))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("非法文件路径");
+    }
+
+    /**
+     * 测试场景：单条 JSONL 远大于当前业务字段规模，但总展开体积仍未超限。
+     * 前置条件：通过可控 helper 把单行上限缩小为 32 字节，避免构造百 MB 对象。
+     * 期望结果：读流越过第 32 字节时立即抛业务异常。
+     * 断言重点：拒绝必须发生在 readLine/Jackson tree 聚合整行之前。
+     */
+    @Test
+    void rejectsJsonLineBeforeAggregatingBeyondHardLimit() throws Exception {
+        Path jsonl = temporaryRoot.resolve("oversized.jsonl");
+        Files.writeString(jsonl, "{\"payload\":\"" + "x".repeat(64) + "\"}\n", StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> SnapshotArchiveService.readUtf8Lines(jsonl, 32, line -> {}))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("JSONL 单行大小超过限制");
+    }
+
+    /**
+     * 测试场景：manifest 超出硬上限时不交给 Jackson 聚合。
+     * 前置条件：通过可控 helper 使用 16 字节上限验证生产相同的读流分支。
+     * 期望结果：只读取上限加一的有界字节后拒绝。
+     * 断言重点：即使 ZIP 总展开上限很大，manifest 仍有独立小内存边界。
+     */
+    @Test
+    void rejectsManifestBeforeReadingBeyondHardLimit() throws Exception {
+        Path manifest = temporaryRoot.resolve("oversized-manifest.json");
+        Files.writeString(manifest, "x".repeat(32), StandardCharsets.UTF_8);
+
+        assertThatThrownBy(() -> SnapshotArchiveService.readLimitedBytes(manifest, 16))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("manifest 大小超过限制");
+    }
+
+    /**
+     * 测试场景：活动检查后普通业务新建了未被当前数据库快照引用的文件。
+     * 前置条件：verification_task 查询先固定当前空视图，随后模拟普通业务提交新行并写入附件。
+     * 期望结果：导出使用 REPEATABLE_READ 只读事务，且 ZIP 不包含新孤儿。
+     * 断言重点：文件选择只来自七表快照实际引用，不再扫描全部受管目录。
+     */
+    @Test
+    void exportsStableReadOnlySnapshotWithoutFilesCreatedAfterActivityCheck() throws Exception {
+        UUID lateTaskId = UUID.randomUUID();
+        Path orphan = temporaryRoot.resolve("storage/uploads/" + lateTaskId + "/orphan.md");
+        List<String> taskRows = new CopyOnWriteArrayList<>();
+        DemoStateRepository repository = mock(DemoStateRepository.class);
+        org.mockito.Mockito.doAnswer(invocation -> {
+                    SnapshotTable table = invocation.getArgument(0);
+                    DemoStateRepository.JsonRowConsumer consumer = invocation.getArgument(1);
+                    if (table == SnapshotTable.VERIFICATION_TASK) {
+                        List<String> rowsVisibleToCurrentSelect = List.copyOf(taskRows);
+                        Files.createDirectories(orphan.getParent());
+                        Files.writeString(orphan, "late", StandardCharsets.UTF_8);
+                        taskRows.add("{\"id\":\"" + lateTaskId + "\",\"upload_path\":\""
+                                + orphan.toAbsolutePath().normalize().toString().replace("\\", "\\\\") + "\"}");
+                        for (String row : rowsVisibleToCurrentSelect) {
+                            consumer.accept(row);
+                        }
+                    }
+                    return null;
+                })
+                .when(repository)
+                .exportRows(org.mockito.ArgumentMatchers.any(), org.mockito.ArgumentMatchers.any());
+        DemoStateService stateService = mock(DemoStateService.class);
+        RecordingTransactionManager transactions = new RecordingTransactionManager();
+        SnapshotArchiveService archive = archive(repository, stateService, transactions, new DemoOperationCoordinator());
+        ByteArrayOutputStream output = new ByteArrayOutputStream();
+
+        archive.exportTo(output);
+
+        Map<String, byte[]> entries = readZip(output.toByteArray());
+        assertThat(entries.keySet()).noneMatch(name -> name.contains("orphan.md"));
+        assertThat(entries.get("tables/verification_task.jsonl")).isEmpty();
+        assertThat(taskRows).hasSize(1);
+        assertThat(transactions.definitions())
+                .anySatisfy(definition -> {
+                    assertThat(definition.getIsolationLevel())
+                            .isEqualTo(TransactionDefinition.ISOLATION_REPEATABLE_READ);
+                    assertThat(definition.isReadOnly()).isTrue();
+                });
     }
 
     /**
@@ -318,6 +478,41 @@ class SnapshotArchiveServiceTest {
             long maxArchiveBytes,
             int maxEntryCount,
             long maxExpandedBytes) {
+        return archive(
+                repository,
+                stateService,
+                maxArchiveBytes,
+                maxEntryCount,
+                maxExpandedBytes,
+                new RecordingTransactionManager(),
+                new DemoOperationCoordinator());
+    }
+
+    /** 为快照事务与共享互斥边界断言显式注入可观测替身。 */
+    private SnapshotArchiveService archive(
+            DemoStateRepository repository,
+            DemoStateService stateService,
+            RecordingTransactionManager transactions,
+            DemoOperationCoordinator coordinator) {
+        return archive(
+                repository,
+                stateService,
+                200L * 1024 * 1024,
+                2_000,
+                500L * 1024 * 1024,
+                transactions,
+                coordinator);
+    }
+
+    /** 统一构造可配置的测试快照服务，不连接真实数据库。 */
+    private SnapshotArchiveService archive(
+            DemoStateRepository repository,
+            DemoStateService stateService,
+            long maxArchiveBytes,
+            int maxEntryCount,
+            long maxExpandedBytes,
+            RecordingTransactionManager transactions,
+            DemoOperationCoordinator coordinator) {
         Path storageRoot = temporaryRoot.resolve("storage");
         WorkbenchProperties properties = new WorkbenchProperties(
                 new WorkbenchProperties.DatabaseBoundary("demo", "test", false),
@@ -334,7 +529,8 @@ class SnapshotArchiveServiceTest {
                 properties,
                 adminProperties,
                 OBJECT_MAPPER,
-                new RecordingTransactionManager());
+                transactions,
+                coordinator);
     }
 
     /** 构造一个没有表行的仓储替身，让导出聚焦文件范围而非 JDBC。 */
@@ -404,18 +600,27 @@ class SnapshotArchiveServiceTest {
 
     /** 为 TransactionTemplate 提供不连接数据库的同步提交/回滚边界。 */
     private static final class RecordingTransactionManager extends AbstractPlatformTransactionManager {
+
+        private final List<TransactionDefinition> definitions = new ArrayList<>();
+
         @Override
         protected Object doGetTransaction() {
             return new Object();
         }
 
         @Override
-        protected void doBegin(Object transaction, TransactionDefinition definition) {}
+        protected void doBegin(Object transaction, TransactionDefinition definition) {
+            definitions.add(new org.springframework.transaction.support.DefaultTransactionDefinition(definition));
+        }
 
         @Override
         protected void doCommit(DefaultTransactionStatus status) {}
 
         @Override
         protected void doRollback(DefaultTransactionStatus status) {}
+
+        private List<TransactionDefinition> definitions() {
+            return List.copyOf(definitions);
+        }
     }
 }
