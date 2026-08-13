@@ -47,7 +47,7 @@ public class DemoStateController {
     public DemoStateView reset(
             @RequestHeader("Idempotency-Key") String requestId, @Valid @RequestBody ResetCommand command) {
         RequestId.requireValid(requestId);
-        return service.reset(command.confirmationPhrase());
+        return service.reset(requestId, command.confirmationPhrase());
     }
 
     /** 管理端重置正文只承载显式确认语，避免接受表名、目录名或任意清理选项。 */

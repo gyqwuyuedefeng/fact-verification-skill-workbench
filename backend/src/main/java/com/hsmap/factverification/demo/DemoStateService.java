@@ -1,8 +1,14 @@
 package com.hsmap.factverification.demo;
 
 import com.hsmap.factverification.shared.ServiceException;
+import java.util.LinkedHashMap;
+import java.util.Map;
 import java.util.UUID;
+import java.util.concurrent.CompletableFuture;
+import java.util.concurrent.CompletionException;
 import org.springframework.stereotype.Service;
+import org.springframework.transaction.TransactionDefinition;
+import org.springframework.transaction.PlatformTransactionManager;
 import org.springframework.transaction.support.TransactionTemplate;
 
 /**
@@ -14,17 +20,27 @@ import org.springframework.transaction.support.TransactionTemplate;
 public class DemoStateService {
 
     private static final String CONFIRMATION_PHRASE = "清空全部比赛数据";
+    private static final int MAX_RESET_IDEMPOTENCY_KEYS = 64;
 
     private final DemoStateRepository repository;
     private final ManagedStorageSwap storageSwap;
-    private final TransactionTemplate transactionTemplate;
+    private final TransactionTemplate resetTransactionTemplate;
+    private final Object idempotencyMonitor = new Object();
+    private final Map<String, CompletableFuture<DemoStateView>> resetResults = new LinkedHashMap<>();
 
-    /** 注入固定状态仓储、受管目录交换器和 Spring 数据库事务模板。 */
+    /**
+     * 注入固定状态仓储、受管目录交换器和底层事务管理器。
+     *
+     * <p>此处新建只属于 reset 的 REQUIRES_NEW 模板，不修改也不复用其他业务服务可能正在参与的 REQUIRED 模板。
+     */
     public DemoStateService(
-            DemoStateRepository repository, ManagedStorageSwap storageSwap, TransactionTemplate transactionTemplate) {
+            DemoStateRepository repository,
+            ManagedStorageSwap storageSwap,
+            PlatformTransactionManager transactionManager) {
         this.repository = repository;
         this.storageSwap = storageSwap;
-        this.transactionTemplate = transactionTemplate;
+        this.resetTransactionTemplate = new TransactionTemplate(transactionManager);
+        this.resetTransactionTemplate.setPropagationBehavior(TransactionDefinition.PROPAGATION_REQUIRES_NEW);
     }
 
     /** 返回固定比赛数据表和受管目录的当前状态，不向客户端暴露真实文件路径。 */
@@ -37,14 +53,46 @@ public class DemoStateService {
      *
      * <p>目录先移动到 .demo-reset 暂存区，以便数据库事务失败时恢复；只有事务提交成功后才删除暂存数据。
      */
-    public DemoStateView reset(String confirmationPhrase) {
+    public DemoStateView reset(String idempotencyKey, String confirmationPhrase) {
+        CompletableFuture<DemoStateView> result;
+        boolean owner = false;
+        synchronized (idempotencyMonitor) {
+            result = resetResults.get(idempotencyKey);
+            if (result == null) {
+                if (resetResults.size() >= MAX_RESET_IDEMPOTENCY_KEYS) {
+                    throw new ServiceException("DEMO_RESET_IDEMPOTENCY_LIMIT_REACHED", "当前演示进程的清空幂等键已达到安全上限");
+                }
+                result = new CompletableFuture<>();
+                resetResults.put(idempotencyKey, result);
+                owner = true;
+            }
+        }
+        if (!owner) {
+            return completedResult(result);
+        }
+        try {
+            DemoStateView resetState = performReset(confirmationPhrase);
+            result.complete(resetState);
+            return resetState;
+        } catch (RuntimeException exception) {
+            result.completeExceptionally(exception);
+            throw exception;
+        }
+    }
+
+    /**
+     * 执行首次幂等请求的实际破坏性操作。
+     *
+     * <p>只有独立事务的 executeWithoutResult 正常返回（即已完成 commit）后才会销毁目录暂存；异常路径始终恢复目录。
+     */
+    private DemoStateView performReset(String confirmationPhrase) {
         if (!CONFIRMATION_PHRASE.equals(confirmationPhrase)) {
             throw new ServiceException("DEMO_RESET_CONFIRMATION_INVALID", "确认短语必须为“清空全部比赛数据”");
         }
         requireNoActiveWork();
         ManagedStorageSwap.PreparedStorageSwap prepared = storageSwap.prepare(UUID.randomUUID());
         try {
-            transactionTemplate.executeWithoutResult(status -> repository.clearAll());
+            resetTransactionTemplate.executeWithoutResult(status -> repository.clearAll());
         } catch (RuntimeException exception) {
             try {
                 storageSwap.restore(prepared);
@@ -55,6 +103,18 @@ public class DemoStateService {
         }
         storageSwap.commit(prepared);
         return status();
+    }
+
+    /** 等待并返回同键首次请求的稳定结果；首次失败也稳定复现同一业务或基础设施异常。 */
+    private static DemoStateView completedResult(CompletableFuture<DemoStateView> result) {
+        try {
+            return result.join();
+        } catch (CompletionException exception) {
+            if (exception.getCause() instanceof RuntimeException runtimeException) {
+                throw runtimeException;
+            }
+            throw exception;
+        }
     }
 
     /**

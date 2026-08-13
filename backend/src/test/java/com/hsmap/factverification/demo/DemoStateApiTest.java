@@ -54,7 +54,7 @@ class DemoStateApiTest {
                         .content("{\"confirmationPhrase\":\"清空全部比赛数据\"}"))
                 .andExpect(status().isOk());
 
-        verify(service).reset(eq("清空全部比赛数据"));
+        verify(service).reset(eq("demo-reset-001"), eq("清空全部比赛数据"));
     }
 
     /**
@@ -81,6 +81,18 @@ class DemoStateApiTest {
         contextRunner("test", false)
                 .run(context -> org.assertj.core.api.Assertions.assertThat(context)
                         .doesNotHaveBean(DemoStateController.class));
+    }
+
+    /**
+     * 测试场景：test profile 明确开启 demo-admin.enabled。
+     * 前置条件：最小上下文提供控制器依赖且不加载完整 Web、数据库或文件存储基础设施。
+     * 期望结果：控制器确实作为 Spring Bean 装配，而非仅在 standalone MockMvc 中可用。
+     * 断言重点：双重条件既不能在生产误装配，也不能因条件表达式错误而在测试环境遗漏端点。
+     */
+    @Test
+    void assemblesControllerWhenTestProfileAndFeatureSwitchAreEnabled() {
+        contextRunner("test", true)
+                .run(context -> org.assertj.core.api.Assertions.assertThat(context).hasSingleBean(DemoStateController.class));
     }
 
     /** 为条件测试构造最小上下文，显式提供控制器的唯一构造器依赖。 */

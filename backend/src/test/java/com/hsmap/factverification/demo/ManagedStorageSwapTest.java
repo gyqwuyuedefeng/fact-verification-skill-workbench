@@ -3,8 +3,10 @@ package com.hsmap.factverification.demo;
 import static org.assertj.core.api.Assertions.assertThatThrownBy;
 
 import com.hsmap.factverification.shared.ServiceException;
+import java.nio.file.Files;
 import java.nio.file.Path;
 import org.junit.jupiter.api.Test;
+import org.junit.jupiter.api.io.TempDir;
 
 /**
  * 被测试对象：ManagedStorageSwap 的固定受管目录边界。
@@ -13,6 +15,9 @@ import org.junit.jupiter.api.Test;
  * 前置条件：storageRoot 使用一个不含三个标准运行子目录的普通相对路径，模拟错误配置输入。
  */
 class ManagedStorageSwapTest {
+
+    @TempDir
+    Path storageRoot;
 
     /**
      * 测试场景：配置的 storageRoot 被规范化后指向父目录之外的受管目标。
@@ -27,5 +32,21 @@ class ManagedStorageSwapTest {
         assertThatThrownBy(() -> swap.requireWithinStorageRoot(Path.of("storage-root/../outside")))
                 .isInstanceOf(ServiceException.class)
                 .hasMessageContaining("DEMO_STORAGE_PATH_INVALID");
+    }
+
+    /**
+     * 测试场景：运行目录中存在名为 .gitkeep 的子目录，且其中包含运行产物。
+     * 前置条件：只有普通 .gitkeep 文件可作为 Git 边界被忽略，目录不是可忽略文件。
+     * 期望结果：uploads 被判定为非空。
+     * 断言重点：攻击者或异常运行不能通过创建同名目录绕过快照导入和清空前的目录状态判断。
+     */
+    @Test
+    void treatsGitkeepDirectoryAndItsContentsAsNonBlank() throws Exception {
+        Path fakeGitkeepDirectory = storageRoot.resolve("uploads/.gitkeep");
+        Files.createDirectories(fakeGitkeepDirectory);
+        Files.writeString(fakeGitkeepDirectory.resolve("runtime.txt"), "不可忽略的运行产物");
+        ManagedStorageSwap swap = new ManagedStorageSwap(storageRoot);
+
+        org.assertj.core.api.Assertions.assertThat(swap.blankState().get("uploads")).isFalse();
     }
 }

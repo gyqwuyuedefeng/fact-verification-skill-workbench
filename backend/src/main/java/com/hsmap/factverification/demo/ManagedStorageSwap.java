@@ -142,7 +142,7 @@ public class ManagedStorageSwap {
                 return true;
             }
             try (Stream<Path> children = Files.list(directory)) {
-                return children.allMatch(child -> GIT_KEEP.equals(child.getFileName().toString()));
+                return children.allMatch(child -> Files.isRegularFile(child) && GIT_KEEP.equals(child.getFileName().toString()));
             }
         } catch (IOException exception) {
             throw new ServiceException("DEMO_STORAGE_SWAP_FAILED", "演示运行目录状态无法读取");
