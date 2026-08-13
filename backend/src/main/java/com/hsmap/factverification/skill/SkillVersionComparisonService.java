@@ -1,9 +1,14 @@
 package com.hsmap.factverification.skill;
 
+import com.fasterxml.jackson.core.JsonProcessingException;
+import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsmap.factverification.shared.ServiceException;
 import com.hsmap.factverification.skill.persistence.SkillVersionRepository;
 import java.util.ArrayList;
+import java.time.OffsetDateTime;
+import java.time.ZoneOffset;
 import java.util.List;
+import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
@@ -16,25 +21,164 @@ public class SkillVersionComparisonService {
 
     private final SkillVersionRepository versions;
     private final SkillChangeSummaryClient summaryClient;
+    private final ObjectMapper objectMapper;
 
-    public SkillVersionComparisonService(SkillVersionRepository versions, SkillChangeSummaryClient summaryClient) {
+    public SkillVersionComparisonService(
+            SkillVersionRepository versions, SkillChangeSummaryClient summaryClient, ObjectMapper objectMapper) {
         this.versions = versions;
         this.summaryClient = summaryClient;
+        this.objectMapper = objectMapper;
     }
 
-    /** 两个版本都必须已冻结；DRAFT 的可变内容不能进入版本比较。 */
-    public VersionComparison compare(UUID targetVersionId, UUID baseVersionId) {
+    /**
+     * 调用模型生成并保存两个冻结版本的升级说明。
+     *
+     * <p>成功结果先构造为可恢复的完整 DTO 再写入目标版本。模型失败时绝不覆盖旧成功结果：若已有快照则返回该快照并标记本次模型不可用，否则只返回确定性差异和 UNAVAILABLE 状态。
+     *
+     * @param targetVersionId 需要审核的目标冻结版本
+     * @param baseVersionId 用作比较基线的冻结版本
+     * @return 已保存的成功说明，或带稳定降级错误码的可审核结果
+     */
+    public VersionComparison generate(UUID targetVersionId, UUID baseVersionId) {
+        ComparisonContext context = context(targetVersionId, baseVersionId);
+        GeneratedChangeSummary summary;
+        String modelId;
+        try {
+            summary = summaryClient.summarize(truncate(context.baseContent()), truncate(context.targetContent()));
+            modelId = summaryClient.modelId();
+        } catch (RuntimeException exception) {
+            return previousOrUnavailable(targetVersionId, baseVersionId, context.diff());
+        }
+        VersionComparison generated = new VersionComparison(
+                targetVersionId,
+                baseVersionId,
+                context.diff(),
+                "COMPLETED",
+                summary,
+                ADVISORY,
+                null,
+                modelId,
+                OffsetDateTime.now(ZoneOffset.UTC),
+                true);
+        save(targetVersionId, baseVersionId, generated);
+        return generated;
+    }
+
+    /**
+     * 恢复已生成的比较说明，绝不触发模型调用。
+     *
+     * <p>页面刷新只需读取目标版本的持久化快照；尚未生成时保留确定性差异并返回 NOT_GENERATED，令前端可以明确展示“尚未生成”而非误判模型故障。
+     *
+     * @param targetVersionId 需要查看的目标冻结版本
+     * @param baseVersionId 用作比较基线的冻结版本
+     * @return 已保存说明或不调用模型的未生成结果
+     */
+    public VersionComparison get(UUID targetVersionId, UUID baseVersionId) {
+        ComparisonContext context = context(targetVersionId, baseVersionId);
+        Optional<String> saved = findSaved(targetVersionId, baseVersionId);
+        return saved.map(this::parse).orElseGet(() -> new VersionComparison(
+                targetVersionId,
+                baseVersionId,
+                context.diff(),
+                "NOT_GENERATED",
+                null,
+                ADVISORY,
+                null,
+                null,
+                null,
+                false));
+    }
+
+    /**
+     * 读取并校验两个冻结版本，然后一次性计算稳定逐行差异。
+     *
+     * <p>无论读取、首次生成还是降级恢复，都以同一份冻结正文作为差异事实，确保模型是否可用不会影响比较底座。
+     */
+    private ComparisonContext context(UUID targetVersionId, UUID baseVersionId) {
         SkillVersionRepository.VersionRow target = frozen(targetVersionId);
         SkillVersionRepository.VersionRow base = frozen(baseVersionId);
         String targetContent = content(target);
         String baseContent = content(base);
-        String diff = lineDiff(baseContent, targetContent);
+        return new ComparisonContext(baseContent, targetContent, lineDiff(baseContent, targetContent));
+    }
+
+    /**
+     * 将完整 DTO 序列化为 JSON 并写入仓储。
+     *
+     * <p>序列化失败、数据库调用失败或没有更新到目标冻结版本均转为脱敏的 {@link ServiceException}，不能把原 JSON 或底层异常带到 API 响应。
+     */
+    private void save(UUID targetVersionId, UUID baseVersionId, VersionComparison comparison) {
         try {
-            GeneratedChangeSummary summary = summaryClient.summarize(truncate(baseContent), truncate(targetContent));
-            return new VersionComparison(targetVersionId, baseVersionId, diff, "COMPLETED", summary, ADVISORY, null);
+            String json = objectMapper.writeValueAsString(comparison);
+            if (versions.saveComparisonSummary(targetVersionId, baseVersionId, json) != 1) {
+                throw new ServiceException("SKILL_VERSION_COMPARISON_SAVE_FAILED", "升级说明保存失败");
+            }
+        } catch (JsonProcessingException exception) {
+            throw new ServiceException("SKILL_VERSION_COMPARISON_SERIALIZE_FAILED", "升级说明保存失败");
+        } catch (ServiceException exception) {
+            throw exception;
         } catch (RuntimeException exception) {
+            throw new ServiceException("SKILL_VERSION_COMPARISON_SAVE_FAILED", "升级说明保存失败");
+        }
+    }
+
+    /**
+     * 在模型调用失败后优先保留已保存的成功说明。
+     *
+     * <p>旧说明代表已完成的历史生成，故维持其完成状态和生成时间，但为本次请求附加稳定的模型不可用错误码；从未生成时才返回 UNAVAILABLE。
+     */
+    private VersionComparison previousOrUnavailable(UUID targetVersionId, UUID baseVersionId, String diff) {
+        Optional<String> saved = findSaved(targetVersionId, baseVersionId);
+        if (saved.isPresent()) {
+            VersionComparison previous = parse(saved.get());
             return new VersionComparison(
-                    targetVersionId, baseVersionId, diff, "UNAVAILABLE", null, ADVISORY, "MODEL_SUMMARY_UNAVAILABLE");
+                    previous.targetVersionId(),
+                    previous.baseVersionId(),
+                    previous.deterministicDiff(),
+                    previous.summaryStatus(),
+                    previous.generatedSummary(),
+                    previous.advisory(),
+                    "MODEL_SUMMARY_UNAVAILABLE",
+                    previous.modelId(),
+                    previous.generatedAt(),
+                    previous.persisted());
+        }
+        return new VersionComparison(
+                targetVersionId,
+                baseVersionId,
+                diff,
+                "UNAVAILABLE",
+                null,
+                ADVISORY,
+                "MODEL_SUMMARY_UNAVAILABLE",
+                summaryClient.modelId(),
+                null,
+                false);
+    }
+
+    /**
+     * 读取目标版本下指定基础版本键的持久化 JSON。
+     *
+     * <p>仓储层异常统一转换为稳定读取错误，防止 JDBC 信息或 JSON 内容泄露给审核页面。
+     */
+    private Optional<String> findSaved(UUID targetVersionId, UUID baseVersionId) {
+        try {
+            return versions.findComparisonSummary(targetVersionId, baseVersionId);
+        } catch (RuntimeException exception) {
+            throw new ServiceException("SKILL_VERSION_COMPARISON_READ_FAILED", "升级说明读取失败");
+        }
+    }
+
+    /**
+     * 将数据库中的历史快照恢复为完整 DTO。
+     *
+     * <p>只接受服务端曾保存的结构；任何损坏或不兼容内容均用稳定业务错误中止读取，避免把原始 JSON 返回到 HTTP 层。
+     */
+    private VersionComparison parse(String json) {
+        try {
+            return objectMapper.readValue(json, VersionComparison.class);
+        } catch (Exception exception) {
+            throw new ServiceException("SKILL_VERSION_COMPARISON_PARSE_FAILED", "已保存的升级说明格式无效");
         }
     }
 
@@ -81,4 +225,7 @@ public class SkillVersionComparisonService {
         }
         return String.join("\n", lines);
     }
+
+    /** 生成与读取流程共享的冻结正文和确定性差异，避免同一请求重复读取版本。 */
+    private record ComparisonContext(String baseContent, String targetContent, String diff) {}
 }

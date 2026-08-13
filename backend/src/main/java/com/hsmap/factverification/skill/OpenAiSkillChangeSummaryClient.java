@@ -23,6 +23,18 @@ public class OpenAiSkillChangeSummaryClient implements SkillChangeSummaryClient 
         this.objectMapper = objectMapper;
     }
 
+    /**
+     * 返回当前 OpenAI-compatible 配置中的模型标识。
+     *
+     * <p>比较服务把该值随成功结果冻结，避免后续环境变量调整后无法追溯历史升级说明的模型来源。
+     *
+     * @return 当前工作台配置的模型 ID
+     */
+    @Override
+    public String modelId() {
+        return properties.model().id();
+    }
+
     /** 请求只用于审核解释；任何网络或 JSON 错误都由比较服务降级，不向门禁传播。 */
     @Override
     public GeneratedChangeSummary summarize(String baseContent, String targetContent) {

@@ -176,6 +176,48 @@ class SkillVersionApiTest {
         verify(versions).deleteDraft(id);
     }
 
+    /**
+     * 测试场景：管理员主动点击生成按钮，再刷新页面恢复该版本比较说明。
+     * 前置条件：POST 请求携带 baseVersionId 正文，GET 请求通过同名查询参数指定基础版本。
+     * 期望结果：POST 委托 generate，GET 委托 get，二者都维持既有 comparison 路径。
+     * 断言重点：读写语义共用稳定 URL，前端无需因页面恢复逻辑切换到新资源路径。
+     */
+    @Test
+    void generatesAndGetsVersionComparisonAtTheSamePath() throws Exception {
+        UUID baseId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+        VersionComparison comparison = comparison(targetId, baseId);
+        when(comparisons.generate(targetId, baseId)).thenReturn(comparison);
+        when(comparisons.get(targetId, baseId)).thenReturn(comparison);
+
+        mvc.perform(post("/api/skills/company-material-fact-check/versions/{id}/comparison", targetId)
+                        .contentType(MediaType.APPLICATION_JSON)
+                        .content("{\"baseVersionId\":\"" + baseId + "\"}"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.summaryStatus").value("COMPLETED"));
+        mvc.perform(get("/api/skills/company-material-fact-check/versions/{id}/comparison", targetId)
+                        .param("baseVersionId", baseId.toString()))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.persisted").value(true));
+
+        verify(comparisons).generate(targetId, baseId);
+        verify(comparisons).get(targetId, baseId);
+    }
+
+    private static VersionComparison comparison(UUID targetId, UUID baseId) {
+        return new VersionComparison(
+                targetId,
+                baseId,
+                "-旧规则\n+新规则",
+                "COMPLETED",
+                new GeneratedChangeSummary("强化单位归一化", List.of("金额统一"), List.of()),
+                "模型生成、仅供审核参考",
+                null,
+                "company-qwen",
+                OffsetDateTime.parse("2026-08-12T00:00:00Z"),
+                true);
+    }
+
     private static SkillVersionView view(UUID id, String status) {
         return new SkillVersionView(
                 id,

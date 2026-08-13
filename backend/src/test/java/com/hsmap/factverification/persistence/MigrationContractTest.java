@@ -24,7 +24,12 @@ class MigrationContractTest {
             "evidence_snapshot",
             "release_binding");
 
-    /** 七张且仅七张比赛表都必须显式写入 test schema。 */
+    /**
+     * 测试场景：首次迁移创建事实核验工作台的业务表。
+     * 前置条件：V1 是工作台唯一的初始表结构迁移，测试以静态文本读取脚本。
+     * 期望结果：七张业务表均显式位于 test schema，且迁移不创建 schema 或引用 public schema。
+     * 断言重点：比赛数据边界必须与共享数据库的其他 schema 隔离。
+     */
     @Test
     void migrationCreatesSevenTablesOnlyInsideTestSchema() throws IOException {
         String migration = resourceText("db/migration/V1__create_fact_verification_workbench.sql");
@@ -36,7 +41,12 @@ class MigrationContractTest {
         assertThat(migration).doesNotContain(" public.");
     }
 
-    /** 关键唯一约束保证幂等、快照复用和追加发布 revision 不会重复。 */
+    /**
+     * 测试场景：并发或重试请求命中初始数据模型的关键唯一边界。
+     * 前置条件：V1 已定义任务、运行、快照和版本发布相关表。
+     * 期望结果：脚本保留请求幂等、运行唯一、证据快照复用和 Skill revision 的唯一约束。
+     * 断言重点：避免迁移调整时无意移除会导致重复处理或错误复用的数据库保护。
+     */
     @Test
     void migrationContainsCurrentMvpUniquenessBoundaries() throws IOException {
         String migration = resourceText("db/migration/V1__create_fact_verification_workbench.sql");
@@ -49,7 +59,12 @@ class MigrationContractTest {
                 .contains("UNIQUE (skill_key, revision)");
     }
 
-    /** 对话增量只能扩展既有任务/运行表，不得新增第八张业务表或伪造 BASELINE Skill。 */
+    /**
+     * 测试场景：对话核验功能在既有工作台数据模型上增加输入与运行变体。
+     * 前置条件：V1 已创建七张业务表，V2 只应扩展 verification_task 和 verification_run。
+     * 期望结果：V2 明确表达 BASELINE 可没有 Skill 版本，且不创建第八张业务表。
+     * 断言重点：对话增量不能破坏原有表数边界或伪造不存在的基准 Skill。
+     */
     @Test
     void chatMigrationKeepsSevenTableBoundaryAndModelsBaselineExplicitly() throws IOException {
         String migration = resourceText("db/migration/V2__chat_verification.sql");
@@ -64,7 +79,29 @@ class MigrationContractTest {
                 .doesNotContain("CREATE TABLE");
     }
 
-    /** Flyway 必须固定到 test schema，并永久禁用 clean。 */
+    /**
+     * 测试场景：Skill 升级说明需要随目标冻结版本持久化，供页面刷新后恢复。
+     * 前置条件：V1 已创建 skill_version，V2 仅扩展对话相关字段。
+     * 期望结果：V3 只向既有 skill_version 增加以基础版本 UUID 为键的 JSONB 字段。
+     * 断言重点：禁止为可恢复的审核说明新增业务表，也禁止改变既有表的归属 schema。
+     */
+    @Test
+    void comparisonMigrationOnlyAddsJsonColumnToExistingSkillVersionTable() throws IOException {
+        String migration = resourceText("db/migration/V3__persist_skill_version_comparisons.sql");
+
+        assertThat(migration)
+                .contains("ALTER TABLE test.skill_version")
+                .contains("ADD COLUMN comparison_summaries_json jsonb NOT NULL DEFAULT '{}'::jsonb")
+                .doesNotContain("CREATE TABLE")
+                .doesNotContain("CREATE SCHEMA");
+    }
+
+    /**
+     * 测试场景：应用启动时执行 Flyway 迁移。
+     * 前置条件：共享数据库中存在其他业务 schema，测试环境不允许清空表。
+     * 期望结果：Flyway 固定迁移到 test schema，禁止 clean 且不自动创建 schema。
+     * 断言重点：防止错误配置扩大迁移范围或执行不可逆的清理操作。
+     */
     @Test
     void applicationConfigurationPinsFlywayAndDisablesClean() throws IOException {
         String configuration = resourceText("application.yml");

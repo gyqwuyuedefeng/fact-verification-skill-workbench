@@ -152,6 +152,51 @@ public class SkillVersionRepository {
                 .findFirst();
     }
 
+    /**
+     * 读取目标冻结版本中以基础版本 UUID 为键保存的升级说明快照。
+     *
+     * <p>说明属于目标版本的派生审核数据而非独立资源，因此用 JSONB 对象保存多份基础版本比较结果；DRAFT 不可读取，防止可变正文伪造冻结比较。
+     *
+     * @param targetId 已冻结的目标版本标识
+     * @param baseId 与目标版本比较的基础版本标识
+     * @return 已保存的完整比较 JSON；尚未生成或目标不可读时为空
+     */
+    public Optional<String> findComparisonSummary(UUID targetId, UUID baseId) {
+        return jdbcTemplate.query(
+                        """
+                        select comparison_summaries_json -> ?
+                          from test.skill_version
+                         where id = ? and status in ('CANDIDATE', 'STABLE', 'ARCHIVED')
+                        """,
+                        (rs, rowNum) -> rs.getString(1),
+                        baseId.toString(),
+                        targetId)
+                .stream()
+                .filter(java.util.Objects::nonNull)
+                .findFirst();
+    }
+
+    /**
+     * 将完整升级说明写入目标冻结版本，并以基础版本 UUID 覆盖同一比较维度的旧快照。
+     *
+     * <p>SQL 同时校验冻结状态，避免服务层读取后版本状态发生变化仍把模型结果写入 DRAFT；返回零表示版本不存在或不可写，由服务层转换为稳定业务错误。
+     *
+     * @param targetId 已冻结的目标版本标识
+     * @param baseId 与目标版本比较的基础版本标识
+     * @param json 已序列化的完整 {@code VersionComparison}，不得包含调用异常原文
+     * @return 实际更新的行数，成功时必须为 1
+     */
+    public int saveComparisonSummary(UUID targetId, UUID baseId, String json) {
+        return jdbcTemplate.update(
+                """
+                update test.skill_version
+                   set comparison_summaries_json = jsonb_set(
+                       comparison_summaries_json, ARRAY[?]::text[], ?::jsonb, true)
+                 where id = ? and status in ('CANDIDATE', 'STABLE', 'ARCHIVED')
+                """,
+                baseId.toString(), json, targetId);
+    }
+
     /** 页面按创建时间倒序展示单一 Skill 家族的全部版本。 */
     public List<VersionRow> listVersions() {
         return jdbcTemplate.query(

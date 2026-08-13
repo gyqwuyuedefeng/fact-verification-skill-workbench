@@ -24,6 +24,7 @@ import org.springframework.web.bind.annotation.PutMapping;
 import org.springframework.web.bind.annotation.RequestBody;
 import org.springframework.web.bind.annotation.RequestHeader;
 import org.springframework.web.bind.annotation.RequestMapping;
+import org.springframework.web.bind.annotation.RequestParam;
 import org.springframework.web.bind.annotation.RestController;
 
 /** 单一 Skill 家族的编辑、冻结与版本卡 API。 */
@@ -129,14 +130,38 @@ public class SkillVersionController {
         return cards.get(versionId);
     }
 
-    /** 手动触发版本审核辅助，不保存摘要，也不改变任何版本状态。 */
+    /**
+     * 手动生成并保存版本审核辅助说明，不改变 Skill 正文、生命周期或发布状态。
+     *
+     * @param skillKey 工作台唯一 Skill 标识
+     * @param versionId 目标冻结版本标识
+     * @param request 包含基础冻结版本标识的比较请求
+     * @return 本次模型生成后已持久化的升级说明
+     */
     @PostMapping("/versions/{versionId}/comparison")
     public VersionComparison compare(
             @PathVariable String skillKey,
             @PathVariable UUID versionId,
             @Valid @RequestBody CompareVersionRequest request) {
         requireSkillKey(skillKey);
-        return comparisons.compare(versionId, request.baseVersionId());
+        return comparisons.generate(versionId, request.baseVersionId());
+    }
+
+    /**
+     * 读取已保存的版本升级说明，页面刷新不会再次调用模型。
+     *
+     * @param skillKey 工作台唯一 Skill 标识
+     * @param versionId 目标冻结版本标识
+     * @param baseVersionId 通过查询参数指定的基础冻结版本标识
+     * @return 已保存说明；尚未生成时返回 NOT_GENERATED
+     */
+    @GetMapping("/versions/{versionId}/comparison")
+    public VersionComparison comparison(
+            @PathVariable String skillKey,
+            @PathVariable UUID versionId,
+            @RequestParam UUID baseVersionId) {
+        requireSkillKey(skillKey);
+        return comparisons.get(versionId, baseVersionId);
     }
 
     public record CompareVersionRequest(@jakarta.validation.constraints.NotNull UUID baseVersionId) {}
