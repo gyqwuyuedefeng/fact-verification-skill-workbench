@@ -321,6 +321,84 @@ class ManagedStorageSwapTest {
         org.assertj.core.api.Assertions.assertThat(original).hasContent("original");
     }
 
+    /**
+     * 测试场景：COPY_VERIFY 配置的 storageRoot 本身是指向另一棵真实目录的符号链接。
+     * 前置条件：链接目标包含三个正式目录及代表文件；当前文件系统不支持创建链接时显式跳过。
+     * 期望结果：prepare 在任何复制、创建 operation 或删除前失败关闭，链接目标全部字节保持不变。
+     * 断言重点：不能先用 Files.createDirectories 跟随 storageRoot，再事后检查链接身份。
+     */
+    @Test
+    void copyVerifyRejectsSymlinkStorageRootBeforeTouchingTarget() throws Exception {
+        Path linkedTarget = storageRoot.resolve("linked-target");
+        populateThreeNestedTrees(linkedTarget);
+        Path linkedRoot = storageRoot.resolve("linked-root");
+        try {
+            Files.createSymbolicLink(linkedRoot, linkedTarget);
+        } catch (UnsupportedOperationException | java.io.IOException exception) {
+            Assumptions.abort("当前文件系统不支持符号链接测试：" + exception.getClass().getSimpleName());
+        }
+        ManagedStorageSwap swap = copyVerify(linkedRoot, ManagedStorageSwap.CopyVerifyFaults.NONE);
+
+        assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("暂存失败");
+
+        assertThreeNestedTrees(linkedTarget);
+        org.assertj.core.api.Assertions.assertThat(linkedTarget.resolve(".demo-reset"))
+                .doesNotExist();
+    }
+
+    /**
+     * 测试场景：COPY_VERIFY 配置的 storageRoot 已存在但只是普通文件。
+     * 前置条件：该文件含可识别原字节，周围不存在 operation 或受管目录。
+     * 期望结果：prepare 失败且原文件字节不变，不尝试把它当目录补建。
+     * 断言重点：storageRoot 必须在 NOFOLLOW 语义下是普通目录。
+     */
+    @Test
+    void copyVerifyRejectsRegularFileStorageRoot() throws Exception {
+        Path fileRoot = storageRoot.resolve("storage-file");
+        Files.writeString(fileRoot, "不可触碰");
+        ManagedStorageSwap swap = copyVerify(fileRoot, ManagedStorageSwap.CopyVerifyFaults.NONE);
+
+        assertThatThrownBy(() -> swap.prepare(UUID.randomUUID()))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("暂存失败");
+
+        org.assertj.core.api.Assertions.assertThat(fileRoot).hasContent("不可触碰");
+    }
+
+    /**
+     * 测试场景：storageRoot 普通但既有 `.demo-reset` 是指向外部目录的 operation 祖先链接。
+     * 前置条件：三个正式目录均含原文件，链接目标为空；不支持链接时显式跳过。
+     * 期望结果：在创建本次 operation、扫描或复制前拒绝，正式目录与外部目标都不变。
+     * 断言重点：物理根门禁必须检查候选路径的每个已存在祖先，而不只检查最终文件。
+     */
+    @Test
+    void copyVerifyRejectsSymlinkOperationAncestorBeforeScanning() throws Exception {
+        Path scenarioRoot = storageRoot.resolve("operation-ancestor");
+        populateThreeNestedTrees(scenarioRoot);
+        Path outside = storageRoot.resolve("outside-reset");
+        Files.createDirectory(outside);
+        UUID operationId = UUID.randomUUID();
+        Path outsideMarker = outside.resolve(operationId.toString()).resolve("must-remain.txt");
+        Files.createDirectories(outsideMarker.getParent());
+        Files.writeString(outsideMarker, "外部既有现场不可触碰");
+        try {
+            Files.createSymbolicLink(scenarioRoot.resolve(".demo-reset"), outside);
+        } catch (UnsupportedOperationException | java.io.IOException exception) {
+            Assumptions.abort("当前文件系统不支持符号链接测试：" + exception.getClass().getSimpleName());
+        }
+        ManagedStorageSwap swap = copyVerify(scenarioRoot, ManagedStorageSwap.CopyVerifyFaults.NONE);
+
+        assertThatThrownBy(() -> swap.prepare(operationId))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("暂存失败");
+
+        assertThreeNestedTrees(scenarioRoot);
+        org.assertj.core.api.Assertions.assertThat(outsideMarker)
+                .hasContent("外部既有现场不可触碰");
+    }
+
     /** COPY_VERIFY 成功时必须支持缺失、仅 .gitkeep 与嵌套文件三种原形，并能逐字节恢复。 */
     @Test
     void copyVerifyPreservesMissingGitkeepAndNestedShapes() throws Exception {

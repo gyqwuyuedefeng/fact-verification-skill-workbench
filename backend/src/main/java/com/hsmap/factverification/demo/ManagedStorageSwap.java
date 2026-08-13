@@ -28,8 +28,8 @@ import org.springframework.stereotype.Component;
 /**
  * 三个比赛运行目录的可恢复交换器。
  *
- * <p>它只管理 uploads、skill-snapshots 与 skill-runtime：先把完整目录原子移到 storageRoot/.demo-reset，再新建带 .gitkeep 的空目录。
- * 数据库事务失败时服务调用 restore 恢复原目录，提交成功后才删除暂存目录。
+ * <p>它只管理 uploads、skill-snapshots 与 skill-runtime。MOVE 使用目录移动，test-only COPY_VERIFY 使用复制、逐文件摘要复验和补偿恢复；
+ * 两种策略都必须先建立 NOFOLLOW 物理 storageRoot。数据库事务失败时服务调用 restore 恢复原目录，提交成功后才删除暂存目录。
  */
 @Component
 public class ManagedStorageSwap {
@@ -171,13 +171,11 @@ public class ManagedStorageSwap {
     private PreparedStorageSwap prepareMove(UUID operationId) {
         Path archiveRoot = requireWithinStorageRoot(storageRoot.resolve(".demo-reset").resolve(operationId.toString()));
         Map<Path, Path> movedDirectories = new LinkedHashMap<>();
+        boolean operationRootCreated = false;
         try {
-            Files.createDirectories(storageRoot);
-            if (Files.isSymbolicLink(storageRoot)
-                    || !Files.isDirectory(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
-                throw new IOException("storageRoot 不是普通目录");
-            }
-            Path resetRoot = requireWithinStorageRoot(storageRoot.resolve(".demo-reset"));
+            Path physicalRoot = requireSafeStorageRoot(true);
+            archiveRoot = requireSafePath(archiveRoot, physicalRoot);
+            Path resetRoot = requireSafePath(storageRoot.resolve(".demo-reset"), physicalRoot);
             if (Files.exists(resetRoot, LinkOption.NOFOLLOW_LINKS)) {
                 if (Files.isSymbolicLink(resetRoot)
                         || !Files.isDirectory(resetRoot, LinkOption.NOFOLLOW_LINKS)) {
@@ -187,9 +185,10 @@ public class ManagedStorageSwap {
                 Files.createDirectory(resetRoot);
             }
             Files.createDirectory(archiveRoot);
+            operationRootCreated = true;
             for (String directoryName : MANAGED_DIRECTORIES) {
-                Path source = requireWithinStorageRoot(storageRoot.resolve(directoryName));
-                Path archive = requireWithinStorageRoot(archiveRoot.resolve(directoryName));
+                Path source = requireSafePath(storageRoot.resolve(directoryName), physicalRoot);
+                Path archive = requireSafePath(archiveRoot.resolve(directoryName), physicalRoot);
                 if (Files.exists(source, LinkOption.NOFOLLOW_LINKS)) {
                     if (Files.isSymbolicLink(source)
                             || !Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)) {
@@ -204,7 +203,9 @@ public class ManagedStorageSwap {
                     archiveRoot, Map.copyOf(movedDirectories), Map.of(), Set.of(), DemoAdminProperties.StorageSwapMode.MOVE);
         } catch (IOException exception) {
             if (restoreMovedDirectories(movedDirectories)) {
-                cleanupEmptyFailedOperation(archiveRoot);
+                if (operationRootCreated) {
+                    cleanupEmptyFailedOperation(archiveRoot);
+                }
             }
             throw new ServiceException("DEMO_STORAGE_SWAP_FAILED", "演示运行目录暂存失败");
         }
@@ -213,7 +214,8 @@ public class ManagedStorageSwap {
     /** 数据库事务提交成功后删除暂存的旧运行数据，结束本次不可逆清空操作。 */
     public void commit(PreparedStorageSwap prepared) {
         try {
-            deleteTree(requireWithinStorageRoot(prepared.archiveRoot()));
+            Path physicalRoot = requireSafeStorageRoot(false);
+            deleteTree(requireSafePath(prepared.archiveRoot(), physicalRoot));
             Path resetRoot = prepared.archiveRoot().getParent();
             if (resetRoot != null && Files.isDirectory(resetRoot) && isDirectoryEmpty(resetRoot)) {
                 Files.delete(resetRoot);
@@ -230,15 +232,16 @@ public class ManagedStorageSwap {
             return;
         }
         try {
+            Path physicalRoot = requireSafeStorageRoot(false);
             for (String directoryName : MANAGED_DIRECTORIES) {
-                Path target = requireWithinStorageRoot(storageRoot.resolve(directoryName));
+                Path target = requireSafePath(storageRoot.resolve(directoryName), physicalRoot);
                 deleteTree(target);
                 Path archive = prepared.movedDirectories().get(target);
                 if (archive != null && Files.exists(archive, LinkOption.NOFOLLOW_LINKS)) {
-                    moveWithinStorageRoot(requireWithinStorageRoot(archive), target);
+                    moveWithinStorageRoot(requireSafePath(archive, physicalRoot), target);
                 }
             }
-            deleteTree(requireWithinStorageRoot(prepared.archiveRoot()));
+            deleteTree(requireSafePath(prepared.archiveRoot(), physicalRoot));
             Path resetRoot = prepared.archiveRoot().getParent();
             if (resetRoot != null && Files.isDirectory(resetRoot) && isDirectoryEmpty(resetRoot)) {
                 Files.delete(resetRoot);
@@ -259,13 +262,14 @@ public class ManagedStorageSwap {
             replaceWithCopyVerify(prepared, stagedDirectories);
             return;
         }
-        Path blankRoot = requireWithinStorageRoot(prepared.archiveRoot().resolve("installed-blank"));
         try {
-            Files.createDirectories(blankRoot);
+            Path physicalRoot = requireSafeStorageRoot(false);
+            Path blankRoot = requireSafePath(prepared.archiveRoot().resolve("installed-blank"), physicalRoot);
+            Files.createDirectory(blankRoot);
             for (String directoryName : MANAGED_DIRECTORIES) {
-                Path source = requireWithinStorageRoot(stagedDirectories.get(directoryName));
-                Path target = requireWithinStorageRoot(storageRoot.resolve(directoryName));
-                Path blankBackup = requireWithinStorageRoot(blankRoot.resolve(directoryName));
+                Path source = requireSafePath(stagedDirectories.get(directoryName), physicalRoot);
+                Path target = requireSafePath(storageRoot.resolve(directoryName), physicalRoot);
+                Path blankBackup = requireSafePath(blankRoot.resolve(directoryName), physicalRoot);
                 if (!Files.isDirectory(source, LinkOption.NOFOLLOW_LINKS)
                         || Files.isSymbolicLink(source)
                         || !isBlank(target)) {
@@ -273,7 +277,7 @@ public class ManagedStorageSwap {
                 }
                 moveWithinStorageRoot(target, blankBackup);
                 moveWithinStorageRoot(source, target);
-                Files.writeString(requireWithinStorageRoot(target.resolve(GIT_KEEP)), "");
+                Files.writeString(requireSafePath(target.resolve(GIT_KEEP), physicalRoot), "");
             }
         } catch (ServiceException exception) {
             throw exception;
@@ -285,8 +289,19 @@ public class ManagedStorageSwap {
     /** 返回三个固定目录是否只包含 .gitkeep，供状态查询和快照导入前检查使用。 */
     public Map<String, Boolean> blankState() {
         Map<String, Boolean> result = new LinkedHashMap<>();
-        for (String directoryName : MANAGED_DIRECTORIES) {
-            result.put(directoryName, isBlank(requireWithinStorageRoot(storageRoot.resolve(directoryName))));
+        try {
+            if (Files.notExists(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
+                for (String directoryName : MANAGED_DIRECTORIES) {
+                    result.put(directoryName, true);
+                }
+                return Map.copyOf(result);
+            }
+            Path physicalRoot = requireSafeStorageRoot(false);
+            for (String directoryName : MANAGED_DIRECTORIES) {
+                result.put(directoryName, isBlank(requireSafePath(storageRoot.resolve(directoryName), physicalRoot)));
+            }
+        } catch (IOException exception) {
+            throw new ServiceException("DEMO_STORAGE_SWAP_FAILED", "演示运行目录状态无法读取");
         }
         return Map.copyOf(result);
     }
@@ -305,6 +320,85 @@ public class ManagedStorageSwap {
     }
 
     /**
+     * 在创建 operation 或扫描任何受管树之前建立唯一可信物理根。
+     *
+     * <p>不能使用 Files.createDirectories(storageRoot)：它会先跟随 storageRoot 或任一祖先链接。这里先按 NOFOLLOW
+     * 从 storageRoot 回溯检查全部已存在祖先，再逐层 CREATE_NEW 式补齐缺失普通目录，最后用
+     * toRealPath(NOFOLLOW_LINKS) 冻结本次调用的物理根。MOVE 与 COPY_VERIFY 共用此门禁，避免策略分支产生不同路径边界。
+     */
+    private Path requireSafeStorageRoot(boolean createIfMissing) throws IOException {
+        List<Path> missing = new ArrayList<>();
+        Path current = storageRoot;
+        while (current != null) {
+            if (Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
+                if (Files.isSymbolicLink(current)
+                        || !Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException("storageRoot 或其已存在祖先不是普通目录");
+                }
+            } else {
+                missing.add(current);
+            }
+            current = current.getParent();
+        }
+        if (!missing.isEmpty()) {
+            if (!createIfMissing) {
+                throw new IOException("storageRoot 不存在");
+            }
+            Collections.reverse(missing);
+            for (Path directory : missing) {
+                Files.createDirectory(directory);
+                if (Files.isSymbolicLink(directory)
+                        || !Files.isDirectory(directory, LinkOption.NOFOLLOW_LINKS)) {
+                    throw new IOException("新建 storageRoot 路径不是普通目录");
+                }
+            }
+        }
+        if (Files.isSymbolicLink(storageRoot)
+                || !Files.isDirectory(storageRoot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("storageRoot 不是普通目录");
+        }
+        Path physicalRoot = storageRoot.toRealPath(LinkOption.NOFOLLOW_LINKS);
+        if (Files.isSymbolicLink(physicalRoot)
+                || !Files.isDirectory(physicalRoot, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("storageRoot 物理路径不是普通目录");
+        }
+        return physicalRoot;
+    }
+
+    /**
+     * 验证固定候选路径的每个已存在祖先均为 NOFOLLOW 普通节点，并把最近现存祖先的物理路径投影到真实根内。
+     *
+     * <p>后续 operation/backup/target 可能尚不存在，不能直接对最终路径调用 toRealPath；因此先逐层检查存在部分，再仅对不存在后缀做词法
+     * resolve。最终节点可以是普通文件，但它之前的所有已存在祖先必须是普通目录。
+     */
+    private Path requireSafePath(Path candidate, Path physicalRoot) throws IOException {
+        Path normalized = requireWithinStorageRoot(candidate);
+        Path current = storageRoot;
+        Path currentPhysical = physicalRoot;
+        for (Path part : storageRoot.relativize(normalized)) {
+            current = current.resolve(part);
+            if (Files.notExists(current, LinkOption.NOFOLLOW_LINKS)) {
+                Path projected = currentPhysical.resolve(current.getParent().relativize(normalized)).normalize();
+                if (!projected.startsWith(physicalRoot)) {
+                    throw new IOException("候选路径物理投影越出 storageRoot");
+                }
+                return normalized;
+            }
+            if (Files.isSymbolicLink(current)) {
+                throw new IOException("候选路径包含符号链接祖先");
+            }
+            if (!current.equals(normalized) && !Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
+                throw new IOException("候选路径祖先不是普通目录");
+            }
+            currentPhysical = current.toRealPath(LinkOption.NOFOLLOW_LINKS);
+            if (!currentPhysical.startsWith(physicalRoot)) {
+                throw new IOException("候选路径物理位置越出 storageRoot");
+            }
+        }
+        return normalized;
+    }
+
+    /**
      * 显式 COPY_VERIFY：三目录全部复制并双向复验成功后，才允许删除任何正式源。
      *
      * <p>该模式只用于单实例 test 管理入口；共享管理写锁与七表锁由调用服务持有，防止应用内文件生产者交错。它不实现进程崩溃 journal，
@@ -315,12 +409,17 @@ public class ManagedStorageSwap {
         Path backupRoot = requireWithinStorageRoot(archiveRoot.resolve("backup"));
         Map<String, TreeManifest> backups = new LinkedHashMap<>();
         Set<String> modified = new LinkedHashSet<>();
+        boolean operationRootCreated = false;
         try {
-            createCopyOperationRoot(archiveRoot, backupRoot);
+            Path physicalRoot = requireSafeStorageRoot(true);
+            archiveRoot = requireSafePath(archiveRoot, physicalRoot);
+            backupRoot = requireSafePath(backupRoot, physicalRoot);
+            createCopyOperationRoot(archiveRoot, backupRoot, physicalRoot);
+            operationRootCreated = true;
             for (String directoryName : MANAGED_DIRECTORIES) {
-                Path source = requireWithinStorageRoot(storageRoot.resolve(directoryName));
+                Path source = requireSafePath(storageRoot.resolve(directoryName), physicalRoot);
                 TreeManifest original = scanTree(source);
-                Path backup = requireWithinStorageRoot(backupRoot.resolve(directoryName));
+                Path backup = requireSafePath(backupRoot.resolve(directoryName), physicalRoot);
                 copyTree(source, backup, original, false);
                 requireManifest(backup, original);
                 copyVerifyFaults.at(CopyVerifyPoint.AFTER_BACKUP_DIRECTORY, source, backup);
@@ -328,7 +427,7 @@ public class ManagedStorageSwap {
                 backups.put(directoryName, original);
             }
             for (String directoryName : MANAGED_DIRECTORIES) {
-                Path source = requireWithinStorageRoot(storageRoot.resolve(directoryName));
+                Path source = requireSafePath(storageRoot.resolve(directoryName), physicalRoot);
                 modified.add(directoryName);
                 copyVerifyFaults.at(CopyVerifyPoint.BEFORE_DELETE_FORMAL, source, backupRoot.resolve(directoryName));
                 deleteTree(source);
@@ -354,8 +453,10 @@ public class ManagedStorageSwap {
                     throw failure;
                 }
             }
-            deleteTreeQuietly(archiveRoot);
-            cleanupResetRootQuietly(archiveRoot.getParent());
+            if (operationRootCreated) {
+                deleteTreeQuietly(archiveRoot);
+                cleanupResetRootQuietly(archiveRoot.getParent());
+            }
             throw new ServiceException("DEMO_STORAGE_SWAP_FAILED", "演示运行目录复制验证暂存失败");
         }
     }
@@ -364,13 +465,14 @@ public class ManagedStorageSwap {
     private void replaceWithCopyVerify(PreparedStorageSwap prepared, Map<String, Path> stagedDirectories) {
         Map<String, TreeManifest> stagedManifests = new LinkedHashMap<>();
         try {
+            Path physicalRoot = requireSafeStorageRoot(false);
             for (String directoryName : MANAGED_DIRECTORIES) {
-                Path source = requireWithinStorageRoot(stagedDirectories.get(directoryName));
+                Path source = requireSafePath(stagedDirectories.get(directoryName), physicalRoot);
                 stagedManifests.put(directoryName, scanTree(source));
             }
             for (String directoryName : MANAGED_DIRECTORIES) {
-                Path source = requireWithinStorageRoot(stagedDirectories.get(directoryName));
-                Path target = requireWithinStorageRoot(storageRoot.resolve(directoryName));
+                Path source = requireSafePath(stagedDirectories.get(directoryName), physicalRoot);
+                Path target = requireSafePath(storageRoot.resolve(directoryName), physicalRoot);
                 if (!isBlank(target)) {
                     throw new ServiceException("DEMO_STATE_NOT_BLANK", "正式运行目录在导入期间变为非空");
                 }
@@ -380,7 +482,7 @@ public class ManagedStorageSwap {
                 requireManifest(target, manifest);
                 requireManifest(source, manifest);
                 Files.writeString(
-                        requireWithinStorageRoot(target.resolve(GIT_KEEP)),
+                        requireSafePath(target.resolve(GIT_KEEP), physicalRoot),
                         "",
                         StandardOpenOption.CREATE,
                         StandardOpenOption.TRUNCATE_EXISTING);
@@ -396,6 +498,7 @@ public class ManagedStorageSwap {
     /** 事务失败时从 prepare 已验证的 backup 重建原始三目录，并在成功后清理 operation。 */
     private void restoreCopyVerifyPublic(PreparedStorageSwap prepared) {
         try {
+            requireSafeStorageRoot(false);
             restoreCopyVerify(
                     prepared.archiveRoot(),
                     prepared.archiveRoot().resolve("backup"),
@@ -413,6 +516,7 @@ public class ManagedStorageSwap {
             Map<String, TreeManifest> backups,
             Set<String> modifiedDirectories)
             throws IOException {
+        Path physicalRoot = requireSafeStorageRoot(false);
         List<String> modified = new ArrayList<>(modifiedDirectories);
         Collections.reverse(modified);
         for (String directoryName : modified) {
@@ -420,22 +524,21 @@ public class ManagedStorageSwap {
             if (manifest == null) {
                 throw new IOException("缺少已验证备份清单");
             }
-            Path target = requireWithinStorageRoot(storageRoot.resolve(directoryName));
-            Path backup = requireWithinStorageRoot(backupRoot.resolve(directoryName));
+            Path target = requireSafePath(storageRoot.resolve(directoryName), physicalRoot);
+            Path backup = requireSafePath(backupRoot.resolve(directoryName), physicalRoot);
             requireManifest(backup, manifest);
             copyVerifyFaults.at(CopyVerifyPoint.BEFORE_RESTORE, backup, target);
             deleteTree(target);
             copyTree(backup, target, manifest, true);
             requireManifest(target, manifest);
         }
-        deleteTree(requireWithinStorageRoot(archiveRoot));
+        deleteTree(requireSafePath(archiveRoot, physicalRoot));
         cleanupResetRootQuietly(archiveRoot.getParent());
     }
 
     /** operation 与 backup 均要求 CREATE_NEW 语义，任何预存现场都拒绝覆盖。 */
-    private void createCopyOperationRoot(Path archiveRoot, Path backupRoot) throws IOException {
-        Files.createDirectories(storageRoot);
-        Path resetRoot = requireWithinStorageRoot(storageRoot.resolve(".demo-reset"));
+    private void createCopyOperationRoot(Path archiveRoot, Path backupRoot, Path physicalRoot) throws IOException {
+        Path resetRoot = requireSafePath(storageRoot.resolve(".demo-reset"), physicalRoot);
         if (Files.notExists(resetRoot, LinkOption.NOFOLLOW_LINKS)) {
             Files.createDirectory(resetRoot);
         } else if (Files.isSymbolicLink(resetRoot)
@@ -448,7 +551,7 @@ public class ManagedStorageSwap {
 
     /** 按稳定相对路径、节点类型、文件 size 与 SHA-256 扫描一棵受限目录树。 */
     private TreeManifest scanTree(Path root) throws IOException {
-        Path safeRoot = requireWithinStorageRoot(root);
+        Path safeRoot = requireSafePath(root, requireSafeStorageRoot(false));
         if (Files.notExists(safeRoot, LinkOption.NOFOLLOW_LINKS)) {
             return new TreeManifest(false, Map.of());
         }
@@ -497,11 +600,14 @@ public class ManagedStorageSwap {
         if (Files.exists(target, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("复制目标已存在");
         }
-        Files.createDirectory(target);
+        Path physicalRoot = requireSafeStorageRoot(false);
+        Path safeSource = requireSafePath(source, physicalRoot);
+        Path safeTarget = requireSafePath(target, physicalRoot);
+        Files.createDirectory(safeTarget);
         for (Map.Entry<String, TreeEntry> item : manifest.entries().entrySet()) {
             Path relative = Path.of(item.getKey());
-            Path from = requireWithinStorageRoot(source.resolve(relative));
-            Path to = requireWithinStorageRoot(target.resolve(relative));
+            Path from = requireSafePath(safeSource.resolve(relative), physicalRoot);
+            Path to = requireSafePath(safeTarget.resolve(relative), physicalRoot);
             TreeEntry entry = item.getValue();
             if (entry.type() == TreeEntryType.DIRECTORY) {
                 Files.createDirectory(to);
@@ -581,14 +687,15 @@ public class ManagedStorageSwap {
 
     private boolean restoreMovedDirectories(Map<Path, Path> movedDirectories) {
         try {
+            Path physicalRoot = requireSafeStorageRoot(false);
             List<Map.Entry<Path, Path>> moved = new java.util.ArrayList<>(movedDirectories.entrySet());
             java.util.Collections.reverse(moved);
             for (Map.Entry<Path, Path> entry : moved) {
-                Path target = requireWithinStorageRoot(entry.getKey());
+                Path target = requireSafePath(entry.getKey(), physicalRoot);
                 deleteTree(target);
                 Path archive = entry.getValue();
                 if (archive != null && Files.exists(archive, LinkOption.NOFOLLOW_LINKS)) {
-                    moveWithinStorageRoot(requireWithinStorageRoot(archive), target);
+                    moveWithinStorageRoot(requireSafePath(archive, physicalRoot), target);
                 }
             }
             return true;
@@ -616,8 +723,15 @@ public class ManagedStorageSwap {
     }
 
     private void createEmptyManagedDirectory(Path directory) throws IOException {
-        Files.createDirectories(directory);
-        Files.writeString(requireWithinStorageRoot(directory.resolve(GIT_KEEP)), "");
+        Path physicalRoot = requireSafeStorageRoot(false);
+        Path safeDirectory = requireSafePath(directory, physicalRoot);
+        if (Files.notExists(safeDirectory, LinkOption.NOFOLLOW_LINKS)) {
+            Files.createDirectory(safeDirectory);
+        } else if (Files.isSymbolicLink(safeDirectory)
+                || !Files.isDirectory(safeDirectory, LinkOption.NOFOLLOW_LINKS)) {
+            throw new IOException("受管空目录不是普通目录");
+        }
+        Files.writeString(requireSafePath(safeDirectory.resolve(GIT_KEEP), physicalRoot), "");
     }
 
     private boolean isBlank(Path directory) {
@@ -651,8 +765,9 @@ public class ManagedStorageSwap {
      * 原样失败，不得泛化降级。两种移动前都要求目标在 NOFOLLOW 语义下不存在，禁止覆盖任何并发或异常现场。
      */
     private void moveWithinStorageRoot(Path source, Path target) throws IOException {
-        Path safeSource = requireWithinStorageRoot(source);
-        Path safeTarget = requireWithinStorageRoot(target);
+        Path physicalRoot = requireSafeStorageRoot(false);
+        Path safeSource = requireSafePath(source, physicalRoot);
+        Path safeTarget = requireSafePath(target, physicalRoot);
         if (Files.exists(safeTarget, LinkOption.NOFOLLOW_LINKS)) {
             throw new java.nio.file.FileAlreadyExistsException(safeTarget.toString());
         }
@@ -674,7 +789,8 @@ public class ManagedStorageSwap {
 
     /** 从目标父目录向 storageRoot 回溯最近的普通现存目录，逐层拒绝链接和越界。 */
     private Path nearestExistingDirectory(Path candidate) throws IOException {
-        Path current = requireWithinStorageRoot(candidate);
+        Path physicalRoot = requireSafeStorageRoot(false);
+        Path current = requireSafePath(candidate, physicalRoot);
         while (!Files.exists(current, LinkOption.NOFOLLOW_LINKS)) {
             Path parent = current.getParent();
             if (parent == null || !parent.startsWith(storageRoot)) {
@@ -682,6 +798,7 @@ public class ManagedStorageSwap {
             }
             current = parent;
         }
+        requireSafePath(current, physicalRoot);
         if (Files.isSymbolicLink(current) || !Files.isDirectory(current, LinkOption.NOFOLLOW_LINKS)) {
             throw new IOException("目标最近现存父路径不是普通目录");
         }
