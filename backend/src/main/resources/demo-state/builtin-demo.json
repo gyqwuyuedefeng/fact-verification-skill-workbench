@@ -80,7 +80,31 @@
         "output_schema_json": {"type":"object"},
         "content_hash": "6ddd7dd413ab70db4c045f64d78aa2c121f96ad0d5ab6ea5f7ac4cb4caf826ff",
         "change_summary": "修复归一化改写与主索引重复实体选择",
-        "version_card_json": {"gateStatus":"PASS","demoStage":"INITIAL"},
+        "version_card_json": {
+          "skillKey": "company-material-fact-check",
+          "version": "v0.1.0+6ddd7dd413ab",
+          "status": "STABLE",
+          "parentVersion": null,
+          "contentHash": "6ddd7dd413ab70db4c045f64d78aa2c121f96ad0d5ab6ea5f7ac4cb4caf826ff",
+          "changeSummary": "修复归一化改写与主索引重复实体选择",
+          "evaluationRunId": "20000000-0000-0000-0000-000000000001",
+          "metrics": {
+            "BASELINE": {
+              "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+              "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+              "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+              "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":1,"denominator":3,"value":0.3333333333333333}
+            },
+            "10000000-0000-0000-0000-000000000001": {
+              "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":3,"denominator":3,"value":1.0},
+              "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+              "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":3,"denominator":3,"value":1.0},
+              "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":0,"denominator":3,"value":0.0}
+            }
+          },
+          "gateStatus": "PASS",
+          "knownFailures": []
+        },
         "registered_evaluation_id": "20000000-0000-0000-0000-000000000001",
         "created_by": "builtin-demo",
         "created_at": "2026-08-13T08:00:00Z",
@@ -99,7 +123,37 @@
         "output_schema_json": {"type":"object"},
         "content_hash": "ac02b84ce4338bfdea243fefaf1c148e4ed90948defaeef5e0a4172fada86154",
         "change_summary": "修复正向存在性主张空结果误判为冲突",
-        "version_card_json": {"gateStatus":"PASS","demoStage":"IMPROVED"},
+        "version_card_json": {
+          "skillKey": "company-material-fact-check",
+          "version": "v0.1.0+ac02b84ce433",
+          "status": "ARCHIVED",
+          "parentVersion": "v0.1.0+6ddd7dd413ab",
+          "contentHash": "ac02b84ce4338bfdea243fefaf1c148e4ed90948defaeef5e0a4172fada86154",
+          "changeSummary": "修复正向存在性主张空结果误判为冲突",
+          "evaluationRunId": "20000000-0000-0000-0000-000000000002",
+          "metrics": {
+            "BASELINE": {
+              "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":1,"denominator":3,"value":0.3333333333333333},
+              "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+              "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":1,"denominator":3,"value":0.3333333333333333},
+              "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":2,"denominator":3,"value":0.6666666666666666}
+            },
+            "10000000-0000-0000-0000-000000000001": {
+              "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+              "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+              "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+              "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":1,"denominator":3,"value":0.3333333333333333}
+            },
+            "10000000-0000-0000-0000-000000000002": {
+              "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":3,"denominator":3,"value":1.0},
+              "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+              "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":3,"denominator":3,"value":1.0},
+              "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":0,"denominator":3,"value":0.0}
+            }
+          },
+          "gateStatus": "PASS",
+          "knownFailures": []
+        },
         "registered_evaluation_id": "20000000-0000-0000-0000-000000000002",
         "created_by": "builtin-demo",
         "created_at": "2026-08-13T08:05:00Z",
@@ -118,7 +172,37 @@
         "output_schema_json": {"type":"object"},
         "content_hash": "29b2fbaaf69ddb754212b08e94452ad21574fa93e5f066600688ee1fefce2b1e",
         "change_summary": "回归候选缺少归一化与主体消歧约束",
-        "version_card_json": {"gateStatus":"FAIL","demoStage":"REGRESSION"},
+        "version_card_json": {
+          "skillKey": "company-material-fact-check",
+          "version": "v0.1.0+29b2fbaaf69d",
+          "status": "CANDIDATE",
+          "parentVersion": "v0.1.0+6ddd7dd413ab",
+          "contentHash": "29b2fbaaf69ddb754212b08e94452ad21574fa93e5f066600688ee1fefce2b1e",
+          "changeSummary": "回归候选缺少归一化与主体消歧约束",
+          "evaluationRunId": "20000000-0000-0000-0000-000000000003",
+          "metrics": {
+            "BASELINE": {
+              "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+              "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+              "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+              "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":1,"denominator":3,"value":0.3333333333333333}
+            },
+            "10000000-0000-0000-0000-000000000001": {
+              "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":3,"denominator":3,"value":1.0},
+              "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+              "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":3,"denominator":3,"value":1.0},
+              "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":0,"denominator":3,"value":0.0}
+            },
+            "10000000-0000-0000-0000-000000000003": {
+              "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":1,"denominator":3,"value":0.3333333333333333},
+              "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+              "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":1,"denominator":3,"value":0.3333333333333333},
+              "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":2,"denominator":3,"value":0.6666666666666666}
+            }
+          },
+          "gateStatus": "FAIL",
+          "knownFailures": ["regression-1", "regression-3"]
+        },
         "registered_evaluation_id": null,
         "created_by": "builtin-demo",
         "created_at": "2026-08-13T08:10:00Z",
@@ -156,8 +240,46 @@
         "run_manifest_json": {"source":"builtin-demo","externalCalls":false},
         "variants_json": [{"type":"BASELINE","identifier":"BASELINE"},{"type":"SKILL","identifier":"10000000-0000-0000-0000-000000000001"}],
         "status": "COMPLETED",
-        "sample_results_json": [],
-        "metrics_json": {"BASELINE":{"accuracy":{"value":0.67}},"10000000-0000-0000-0000-000000000001":{"accuracy":{"value":0.9}}},
+        "sample_results_json": [
+          {
+            "sampleId": "initial-1",
+            "gold": {"sampleId":"initial-1","category":"主体消歧","material":{"text":"主索引存在同名主体。"},"expectedSubject":{"name":"演示公司甲"},"normalizedClaim":{"type":"PROFILE"},"expectedStatus":"VERIFIED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":["同名主体"]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"initial-1","accurate":false,"completed":true,"requiresHumanIntervention":true},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"initial-1","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]}
+            }
+          },
+          {
+            "sampleId": "initial-2",
+            "gold": {"sampleId":"initial-2","category":"财务归一化","material":{"text":"营业收入单位需要换算。"},"expectedSubject":{"name":"演示公司乙"},"normalizedClaim":{"type":"FINANCIAL"},"expectedStatus":"VERIFIED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":["单位换算"]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"initial-2","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"initial-2","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]}
+            }
+          },
+          {
+            "sampleId": "initial-3",
+            "gold": {"sampleId":"initial-3","category":"风险核验","material":{"text":"材料包含一条风险主张。"},"expectedSubject":{"name":"演示公司丙"},"normalizedClaim":{"type":"RISK"},"expectedStatus":"CONFLICTED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":[]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"initial-3","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"initial-3","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]}
+            }
+          }
+        ],
+        "metrics_json": {
+          "BASELINE": {
+            "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+            "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+            "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+            "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":1,"denominator":3,"value":0.3333333333333333}
+          },
+          "10000000-0000-0000-0000-000000000001": {
+            "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":3,"denominator":3,"value":1.0},
+            "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+            "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":3,"denominator":3,"value":1.0},
+            "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":0,"denominator":3,"value":0.0}
+          }
+        },
         "failures_json": [],
         "human_corrections_json": [],
         "gate_status": "PASS",
@@ -178,8 +300,55 @@
         "run_manifest_json": {"source":"builtin-demo","externalCalls":false},
         "variants_json": [{"type":"BASELINE","identifier":"BASELINE"},{"type":"SKILL","identifier":"10000000-0000-0000-0000-000000000001"},{"type":"SKILL","identifier":"10000000-0000-0000-0000-000000000002"}],
         "status": "COMPLETED",
-        "sample_results_json": [],
-        "metrics_json": {"BASELINE":{"accuracy":{"value":0.67}},"10000000-0000-0000-0000-000000000001":{"accuracy":{"value":0.9}},"10000000-0000-0000-0000-000000000002":{"accuracy":{"value":0.93}}},
+        "sample_results_json": [
+          {
+            "sampleId": "improved-1",
+            "gold": {"sampleId":"improved-1","category":"正向存在性","material":{"text":"空结果不能直接证明正向事实为假。"},"expectedSubject":{"name":"演示公司甲"},"normalizedClaim":{"type":"POSITIVE_EXISTENCE"},"expectedStatus":"UNVERIFIABLE","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":["空结果"]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"improved-1","accurate":false,"completed":false,"requiresHumanIntervention":true},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"improved-1","accurate":false,"completed":true,"requiresHumanIntervention":true},"attempts":[]},
+              "10000000-0000-0000-0000-000000000002": {"variantId":"10000000-0000-0000-0000-000000000002","score":{"sampleId":"improved-1","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]}
+            }
+          },
+          {
+            "sampleId": "improved-2",
+            "gold": {"sampleId":"improved-2","category":"财务核验","material":{"text":"核验年度营业收入。"},"expectedSubject":{"name":"演示公司乙"},"normalizedClaim":{"type":"FINANCIAL"},"expectedStatus":"VERIFIED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":[]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"improved-2","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"improved-2","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000002": {"variantId":"10000000-0000-0000-0000-000000000002","score":{"sampleId":"improved-2","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]}
+            }
+          },
+          {
+            "sampleId": "improved-3",
+            "gold": {"sampleId":"improved-3","category":"知识产权","material":{"text":"核验专利存在性。"},"expectedSubject":{"name":"演示公司丙"},"normalizedClaim":{"type":"INTELLECTUAL_PROPERTY"},"expectedStatus":"VERIFIED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":[]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"improved-3","accurate":false,"completed":true,"requiresHumanIntervention":true},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"improved-3","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000002": {"variantId":"10000000-0000-0000-0000-000000000002","score":{"sampleId":"improved-3","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]}
+            }
+          }
+        ],
+        "metrics_json": {
+          "BASELINE": {
+            "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":1,"denominator":3,"value":0.3333333333333333},
+            "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+            "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":1,"denominator":3,"value":0.3333333333333333},
+            "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":2,"denominator":3,"value":0.6666666666666666}
+          },
+          "10000000-0000-0000-0000-000000000001": {
+            "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+            "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+            "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+            "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":1,"denominator":3,"value":0.3333333333333333}
+          },
+          "10000000-0000-0000-0000-000000000002": {
+            "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":3,"denominator":3,"value":1.0},
+            "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+            "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":3,"denominator":3,"value":1.0},
+            "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":0,"denominator":3,"value":0.0}
+          }
+        },
         "failures_json": [],
         "human_corrections_json": [],
         "gate_status": "PASS",
@@ -200,9 +369,59 @@
         "run_manifest_json": {"source":"builtin-demo","externalCalls":false},
         "variants_json": [{"type":"BASELINE","identifier":"BASELINE"},{"type":"SKILL","identifier":"10000000-0000-0000-0000-000000000001"},{"type":"SKILL","identifier":"10000000-0000-0000-0000-000000000003"}],
         "status": "COMPLETED",
-        "sample_results_json": [],
-        "metrics_json": {"BASELINE":{"accuracy":{"value":0.67}},"10000000-0000-0000-0000-000000000001":{"accuracy":{"value":0.9}},"10000000-0000-0000-0000-000000000003":{"accuracy":{"value":0.4}}},
-        "failures_json": [{"sampleId":"regression-1","reason":"主体消歧与归一化规则缺失"}],
+        "sample_results_json": [
+          {
+            "sampleId": "regression-1",
+            "gold": {"sampleId":"regression-1","category":"主体消歧","material":{"text":"同名主体必须以统一代码消歧。"},"expectedSubject":{"name":"演示公司甲"},"normalizedClaim":{"type":"PROFILE"},"expectedStatus":"VERIFIED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":["同名主体"]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"regression-1","accurate":false,"completed":true,"requiresHumanIntervention":true},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"regression-1","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000003": {"variantId":"10000000-0000-0000-0000-000000000003","score":{"sampleId":"regression-1","accurate":false,"completed":false,"requiresHumanIntervention":true},"attempts":[]}
+            }
+          },
+          {
+            "sampleId": "regression-2",
+            "gold": {"sampleId":"regression-2","category":"财务核验","material":{"text":"核验年度营业收入。"},"expectedSubject":{"name":"演示公司乙"},"normalizedClaim":{"type":"FINANCIAL"},"expectedStatus":"VERIFIED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":[]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"regression-2","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"regression-2","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000003": {"variantId":"10000000-0000-0000-0000-000000000003","score":{"sampleId":"regression-2","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]}
+            }
+          },
+          {
+            "sampleId": "regression-3",
+            "gold": {"sampleId":"regression-3","category":"归一化","material":{"text":"金额单位需要统一后再比较。"},"expectedSubject":{"name":"演示公司丙"},"normalizedClaim":{"type":"FINANCIAL"},"expectedStatus":"VERIFIED","evidenceRequests":[],"manualEvidence":[],"acceptableCriteria":{},"edgeCases":["单位换算"]},
+            "variantResults": {
+              "BASELINE": {"variantId":"BASELINE","score":{"sampleId":"regression-3","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000001": {"variantId":"10000000-0000-0000-0000-000000000001","score":{"sampleId":"regression-3","accurate":true,"completed":true,"requiresHumanIntervention":false},"attempts":[]},
+              "10000000-0000-0000-0000-000000000003": {"variantId":"10000000-0000-0000-0000-000000000003","score":{"sampleId":"regression-3","accurate":false,"completed":true,"requiresHumanIntervention":true},"attempts":[]}
+            }
+          }
+        ],
+        "metrics_json": {
+          "BASELINE": {
+            "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+            "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+            "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+            "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":1,"denominator":3,"value":0.3333333333333333}
+          },
+          "10000000-0000-0000-0000-000000000001": {
+            "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":3,"denominator":3,"value":1.0},
+            "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":3,"denominator":3,"value":1.0},
+            "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":3,"denominator":3,"value":1.0},
+            "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":0,"denominator":3,"value":0.0}
+          },
+          "10000000-0000-0000-0000-000000000003": {
+            "accuracy": {"definition":"主体、核验结论和核心证据均正确的金标主张数 / 金标主张总数","numerator":1,"denominator":3,"value":0.3333333333333333},
+            "completionRate": {"definition":"时限内完成并产生合法结果的样本数 / 样本总数","numerator":2,"denominator":3,"value":0.6666666666666666},
+            "stability": {"definition":"同条件三次运行主体和结论一致的抽样数 / 稳定性抽样总数","numerator":1,"denominator":3,"value":0.3333333333333333},
+            "humanInterventionRate": {"definition":"主动请求确认或发布前必须修正的样本数 / 样本总数","numerator":2,"denominator":3,"value":0.6666666666666666}
+          }
+        },
+        "failures_json": [
+          {"sampleId":"regression-1","variantId":"10000000-0000-0000-0000-000000000003","failureType":"GOLD_SCORING_MISMATCH","reason":"主体消歧规则缺失"},
+          {"sampleId":"regression-3","variantId":"10000000-0000-0000-0000-000000000003","failureType":"GOLD_SCORING_MISMATCH","reason":"归一化规则缺失"}
+        ],
         "human_corrections_json": [],
         "gate_status": "FAIL",
         "gate_reasons_json": [{"name":"accuracy","passed":false,"reason":"回归候选准确率低于门禁"}],
