@@ -120,6 +120,37 @@ class SkillVersionComparisonServiceTest {
         assertThat(failedRegeneration.errorCode()).isEqualTo("MODEL_SUMMARY_UNAVAILABLE");
     }
 
+    /**
+     * 测试场景：首次生成升级说明时，模型摘要和模型标识均同时不可用。
+     * 前置条件：目标版本不存在该基础版本的历史说明，客户端的 summarize 与 modelId 都抛出运行时异常。
+     * 期望结果：服务不传播客户端原始异常，返回 UNAVAILABLE 和 MODEL_SUMMARY_UNAVAILABLE。
+     * 断言重点：无旧快照的降级分支不能为了补充模型标识而进行保护外的第二次失败调用。
+     */
+    @Test
+    void returnsUnavailableWhenSummaryAndModelIdBothFailWithoutPreviousSnapshot() {
+        UUID baseId = UUID.randomUUID();
+        UUID targetId = UUID.randomUUID();
+        SkillVersionRepository repository = versions(baseId, targetId);
+        when(repository.findComparisonSummary(targetId, baseId)).thenReturn(Optional.empty());
+        SkillChangeSummaryClient client = new SkillChangeSummaryClient() {
+            @Override
+            public GeneratedChangeSummary summarize(String baseContent, String targetContent) {
+                throw new IllegalStateException("summary transport failure");
+            }
+
+            @Override
+            public String modelId() {
+                throw new IllegalStateException("model id lookup failure");
+            }
+        };
+
+        VersionComparison result = service(repository, client).generate(targetId, baseId);
+
+        assertThat(result.summaryStatus()).isEqualTo("UNAVAILABLE");
+        assertThat(result.errorCode()).isEqualTo("MODEL_SUMMARY_UNAVAILABLE");
+        assertThat(result.modelId()).isEqualTo("unknown");
+    }
+
     private SkillVersionComparisonService service(SkillVersionRepository repository, SkillChangeSummaryClient client) {
         return new SkillVersionComparisonService(repository, client, new ObjectMapper().findAndRegisterModules());
     }

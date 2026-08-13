@@ -12,17 +12,33 @@ import java.util.Optional;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
 
-/** 冻结 Skill 的按需比较：确定性差异是事实，模型摘要只是可失败的辅助解释。 */
+/**
+ * 管理冻结 Skill 版本之间可恢复升级说明的应用服务。
+ *
+ * <p>服务先根据两份冻结正文计算稳定的逐行差异，再按需调用模型补充审核摘要。成功摘要以“目标版本 + 基础版本”作为唯一维度写入目标版本的 JSONB 字段，页面刷新仅恢复快照而不会重复调用模型。模型不可用时，服务优先保留旧成功快照；没有快照时返回含确定性差异的 {@code UNAVAILABLE} 结果，绝不传播模型原始异常。
+ *
+ * <p>版本比较只是管理员审核辅助：不修改 Skill 冻结内容、版本生命周期、版本卡或发布门禁。持久化、读取和解析异常均转换为稳定的 {@link ServiceException}，防止数据库 JSON、模型响应或底层异常泄露至 API。
+ */
 @Service
 public class SkillVersionComparisonService {
 
     private static final String ADVISORY = "模型生成、仅供审核参考";
+    private static final String UNKNOWN_MODEL_ID = "unknown";
     private static final int MAX_SUMMARY_CONTENT = 30_000;
 
     private final SkillVersionRepository versions;
     private final SkillChangeSummaryClient summaryClient;
     private final ObjectMapper objectMapper;
 
+    /**
+     * 注入冻结版本仓储、模型摘要客户端和 JSON 序列化器。
+     *
+     * <p>仓储负责限定已冻结版本的比较快照读写，客户端只负责可能失败的外部模型调用，序列化器负责把完整 DTO 固化为可恢复 JSON；三者分离保证模型故障不会改变版本或门禁状态。
+     *
+     * @param versions 冻结版本与比较快照的持久化访问入口
+     * @param summaryClient 生成审核辅助摘要的外部模型客户端
+     * @param objectMapper 序列化和恢复完整比较 DTO 的 JSON 工具
+     */
     public SkillVersionComparisonService(
             SkillVersionRepository versions, SkillChangeSummaryClient summaryClient, ObjectMapper objectMapper) {
         this.versions = versions;
@@ -151,7 +167,7 @@ public class SkillVersionComparisonService {
                 null,
                 ADVISORY,
                 "MODEL_SUMMARY_UNAVAILABLE",
-                summaryClient.modelId(),
+                UNKNOWN_MODEL_ID,
                 null,
                 false);
     }
