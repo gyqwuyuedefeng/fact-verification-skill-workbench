@@ -6,6 +6,7 @@ import {
   deleteSkillDraft,
   freezeSkillDraft,
   getSkillVersionContent,
+  getSkillVersionComparison,
   getVersionCard,
   listSkillVersions,
   updateSkillDraft,
@@ -97,7 +98,20 @@ export const useSkillStore = defineStore('skill', {
         this.busy = false
       }
     },
-    async compareVersions(targetVersionId: string, baseVersionId: string) {
+    /** 选择版本对时仅恢复服务端保存的摘要，不调用模型。 */
+    async loadComparison(targetVersionId: string, baseVersionId: string) {
+      this.busy = true
+      this.error = null
+      try {
+        this.comparison = await getSkillVersionComparison(targetVersionId, baseVersionId)
+      } catch (error) {
+        this.error = error instanceof Error ? error.message : '读取升级说明失败'
+      } finally {
+        this.busy = false
+      }
+    },
+    /** 管理员明确点击后才生成；失败时保留页面上已恢复的旧摘要。 */
+    async generateComparison(targetVersionId: string, baseVersionId: string) {
       this.busy = true
       this.error = null
       try {

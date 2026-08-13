@@ -406,6 +406,12 @@ body {
   flex-wrap: wrap;
 }
 
+.release-grid .text-input:disabled {
+  cursor: not-allowed;
+  color: #64788d;
+  background: #132235;
+}
+
 .release-history-panel {
   max-height: 620px;
   overflow: auto;

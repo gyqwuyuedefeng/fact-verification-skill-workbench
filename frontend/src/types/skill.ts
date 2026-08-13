@@ -53,7 +53,10 @@ export interface VersionComparison {
   targetVersionId: string
   baseVersionId: string
   deterministicDiff: string
-  summaryStatus: 'COMPLETED' | 'UNAVAILABLE'
+  summaryStatus: 'NOT_GENERATED' | 'COMPLETED' | 'UNAVAILABLE'
+  modelId: string | null
+  generatedAt: string | null
+  persisted: boolean
   generatedSummary: GeneratedChangeSummary | null
   advisory: string
   errorCode: string | null

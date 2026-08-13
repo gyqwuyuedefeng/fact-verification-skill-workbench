@@ -3,7 +3,10 @@ import { createPinia, setActivePinia } from 'pinia'
 import { describe, expect, it, vi } from 'vitest'
 
 import ReleasePage from '../ReleasePage.vue'
+import { useEvaluationStore } from '../../stores/evaluation'
 import { useReleaseStore } from '../../stores/release'
+import { useSkillStore } from '../../stores/skill'
+import type { EvaluationRun } from '../../types/evaluation'
 
 const releaseState = {
   revision: 3,
@@ -14,6 +17,26 @@ const releaseState = {
   action: 'SHADOW_START' as const,
   reason: '开始影子验证',
   createdAt: '2026-08-12T00:00:00Z',
+}
+
+function evaluation(
+  id: string,
+  status: EvaluationRun['status'],
+  gateStatus: EvaluationRun['gateStatus'],
+  variantIds: string[],
+): EvaluationRun {
+  return {
+    id,
+    datasetVersion: 'public-tech-2024-v3',
+    datasetHash: null,
+    sampleCount: 10,
+    variants: variantIds.map((identifier) => ({ type: identifier === 'BASELINE' ? 'BASELINE' : 'SKILL', identifier, contentHash: 'a'.repeat(64) })),
+    runManifest: null,
+    metrics: null,
+    status,
+    gateStatus,
+    gateReasons: null,
+  }
 }
 
 describe('ReleaseWorkflow', () => {
@@ -27,9 +50,9 @@ describe('ReleaseWorkflow', () => {
 
     const wrapper = mount(ReleasePage, { global: { plugins: [pinia] } })
 
-    expect(wrapper.text()).toContain('Candidate 不替换正式结果')
+    expect(wrapper.text()).toContain('候选版（CANDIDATE）不替换正式结果')
     expect(wrapper.text()).toContain('SHADOW_START')
-    const button = wrapper.findAll('button').find((item) => item.text() === '晋升 Stable')
+    const button = wrapper.findAll('button').find((item) => item.text() === '晋升稳定版（STABLE）')
     await button?.trigger('click')
     expect(change).toHaveBeenCalledWith('promote', '同条件评测通过，进入真实材料影子验证')
   })
@@ -66,5 +89,55 @@ describe('ReleaseWorkflow', () => {
     expect(wrapper.text()).toContain('模拟科技股份有限公司')
     expect(wrapper.text()).toContain('主张差异 1')
     expect(wrapper.text()).toContain('影子真实材料没有金标，不计算准确率')
+  })
+
+  it('只允许为候选版选择已完成、人工通过且包含该候选版的评测，并展示中文状态', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const release = useReleaseStore()
+    const skill = useSkillStore()
+    const evaluations = useEvaluationStore()
+    release.current = releaseState
+    skill.versions = [
+      {
+        id: 'stable-1', skillKey: 'company-material-fact-check', version: 'v0.1.0', parentVersionId: null,
+        status: 'STABLE', contentHash: 'a'.repeat(64), changeSummary: '稳定规则',
+        createdAt: '2026-08-11T00:00:00Z', frozenAt: '2026-08-11T00:01:00Z',
+      },
+      {
+        id: 'candidate-1', skillKey: 'company-material-fact-check', version: 'v0.2.0', parentVersionId: 'stable-1',
+        status: 'CANDIDATE', contentHash: 'b'.repeat(64), changeSummary: '候选规则一',
+        createdAt: '2026-08-12T00:00:00Z', frozenAt: '2026-08-12T00:01:00Z',
+      },
+      {
+        id: 'candidate-2', skillKey: 'company-material-fact-check', version: 'v0.3.0', parentVersionId: 'stable-1',
+        status: 'CANDIDATE', contentHash: 'c'.repeat(64), changeSummary: '候选规则二',
+        createdAt: '2026-08-13T00:00:00Z', frozenAt: '2026-08-13T00:01:00Z',
+      },
+    ]
+    evaluations.history = [
+      evaluation('pass-related', 'COMPLETED', 'PASS', ['BASELINE', 'candidate-1']),
+      evaluation('fail-related', 'COMPLETED', 'FAIL', ['BASELINE', 'candidate-1']),
+      evaluation('pass-unrelated', 'COMPLETED', 'PASS', ['BASELINE', 'candidate-2']),
+    ]
+
+    const wrapper = mount(ReleasePage, { global: { plugins: [pinia] } })
+    const candidateSelect = wrapper.get('[data-test="release-candidate-version"]')
+
+    expect(candidateSelect.text()).toContain('候选版（CANDIDATE）')
+    expect(candidateSelect.text()).not.toContain('stable-1')
+    expect(wrapper.text()).toContain('正式版（STABLE）')
+    expect(wrapper.text()).toContain('候选版（CANDIDATE）')
+
+    await candidateSelect.setValue('candidate-1')
+    const evaluationSelect = wrapper.get('[data-test="release-evaluation-run"]')
+    expect(evaluationSelect.text()).toContain('pass-related')
+    expect(evaluationSelect.text()).toContain('人工通过（PASS）')
+    expect(evaluationSelect.text()).not.toContain('fail-related')
+    expect(evaluationSelect.text()).not.toContain('pass-unrelated')
+
+    await evaluationSelect.setValue('pass-related')
+    await candidateSelect.setValue('candidate-2')
+    expect((evaluationSelect.element as HTMLSelectElement).value).toBe('')
   })
 })

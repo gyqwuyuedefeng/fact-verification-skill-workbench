@@ -89,3 +89,12 @@ export function compareSkillVersions(
     body: JSON.stringify({ baseVersionId }),
   })
 }
+
+/** 仅读取已持久化的说明，避免页面选择版本对时重复触发模型生成。 */
+export function getSkillVersionComparison(
+  targetVersionId: string,
+  baseVersionId: string,
+): Promise<VersionComparison> {
+  const query = new URLSearchParams({ baseVersionId })
+  return request(`${root}/versions/${targetVersionId}/comparison?${query.toString()}`)
+}

@@ -267,6 +267,9 @@ describe('SkillLabPage', () => {
       baseVersionId: 'stable-1',
       deterministicDiff: '-旧规则\n+新规则：金额统一转元',
       summaryStatus: 'COMPLETED',
+      modelId: 'gpt-5.6',
+      generatedAt: '2026-08-12T00:02:00Z',
+      persisted: true,
       generatedSummary: {
         headline: '强化单位归一化',
         changes: ['万元统一转元'],
@@ -275,7 +278,8 @@ describe('SkillLabPage', () => {
       advisory: '模型生成、仅供审核参考',
       errorCode: null,
     }
-    const compare = vi.spyOn(store, 'compareVersions').mockResolvedValue()
+    vi.spyOn(store, 'loadComparison').mockResolvedValue()
+    const compare = vi.spyOn(store, 'generateComparison').mockResolvedValue()
 
     const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
     await wrapper.find('[data-test="target-version"]').setValue('candidate-2')
@@ -286,5 +290,73 @@ describe('SkillLabPage', () => {
     expect(wrapper.text()).toContain('强化单位归一化')
     expect(wrapper.text()).toContain('模型生成、仅供审核参考')
     expect(wrapper.find('[data-test="deterministic-diff"]').text()).toContain('+新规则')
+  })
+
+  it('选择版本对时先恢复已保存说明，只有点击按钮才生成新说明', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useSkillStore()
+    store.versions = [
+      {
+        id: 'stable-1', skillKey: 'company-material-fact-check', version: 'v0.1.0', parentVersionId: null,
+        status: 'STABLE', contentHash: 'a'.repeat(64), changeSummary: '初始规则',
+        createdAt: '2026-08-11T00:00:00Z', frozenAt: '2026-08-11T00:01:00Z',
+      },
+      {
+        id: 'candidate-1', skillKey: 'company-material-fact-check', version: 'v0.2.0', parentVersionId: 'stable-1',
+        status: 'CANDIDATE', contentHash: 'b'.repeat(64), changeSummary: '候选规则',
+        createdAt: '2026-08-12T00:00:00Z', frozenAt: '2026-08-12T00:01:00Z',
+      },
+    ]
+    const loadComparison = vi.fn().mockResolvedValue(undefined)
+    const generateComparison = vi.fn().mockResolvedValue(undefined)
+    Object.assign(store, { loadComparison, generateComparison })
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+
+    await wrapper.get('[data-test="target-version"]').setValue('candidate-1')
+    await wrapper.get('[data-test="base-version"]').setValue('stable-1')
+
+    expect(loadComparison).toHaveBeenCalledWith('candidate-1', 'stable-1')
+    expect(generateComparison).not.toHaveBeenCalled()
+
+    await wrapper.get('[data-test="generate-change-summary"]').trigger('click')
+
+    expect(generateComparison).toHaveBeenCalledWith('candidate-1', 'stable-1')
+  })
+
+  it('生成升级说明失败时保留已有摘要并提示失败原因', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useSkillStore()
+    store.versions = [
+      {
+        id: 'stable-1', skillKey: 'company-material-fact-check', version: 'v0.1.0', parentVersionId: null,
+        status: 'STABLE', contentHash: 'a'.repeat(64), changeSummary: '初始规则',
+        createdAt: '2026-08-11T00:00:00Z', frozenAt: '2026-08-11T00:01:00Z',
+      },
+      {
+        id: 'candidate-1', skillKey: 'company-material-fact-check', version: 'v0.2.0', parentVersionId: 'stable-1',
+        status: 'CANDIDATE', contentHash: 'b'.repeat(64), changeSummary: '候选规则',
+        createdAt: '2026-08-12T00:00:00Z', frozenAt: '2026-08-12T00:01:00Z',
+      },
+    ]
+    store.comparison = {
+      targetVersionId: 'candidate-1', baseVersionId: 'stable-1', deterministicDiff: '-旧规则\n+新规则',
+      summaryStatus: 'COMPLETED', modelId: 'gpt-5.6', generatedAt: '2026-08-12T00:02:00Z', persisted: true,
+      generatedSummary: { headline: '已有升级摘要', changes: ['统一金额单位'], reviewRisks: ['复核历史材料'] },
+      advisory: '模型生成、仅供审核参考', errorCode: null,
+    }
+    const generateComparison = vi.fn().mockImplementation(async () => {
+      store.error = '模型服务暂时不可用'
+    })
+    Object.assign(store, { loadComparison: vi.fn().mockResolvedValue(undefined), generateComparison })
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+
+    await wrapper.get('[data-test="target-version"]').setValue('candidate-1')
+    await wrapper.get('[data-test="base-version"]').setValue('stable-1')
+    await wrapper.get('[data-test="generate-change-summary"]').trigger('click')
+
+    expect(wrapper.text()).toContain('已有升级摘要')
+    expect(wrapper.text()).toContain('模型服务暂时不可用')
   })
 })
