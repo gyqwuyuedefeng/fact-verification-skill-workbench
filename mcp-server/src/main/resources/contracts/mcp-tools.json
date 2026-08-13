@@ -1,0 +1,96 @@
+{
+  "transport": {
+    "protocol": "STREAMABLE",
+    "endpoint": "/mcp",
+    "legacyEndpointsForbidden": ["/sse", "/mcp/message"]
+  },
+  "snapshotHeader": "X-Evidence-Snapshot-Id",
+  "tools": [
+    {
+      "name": "resolve_company",
+      "description": "按企业名称或别名查找规范企业主体候选。",
+      "inputSchema": {
+        "type": "object",
+        "additionalProperties": false,
+        "required": ["query"],
+        "properties": {
+          "query": { "type": "string", "minLength": 2, "maxLength": 200 }
+        }
+      },
+      "outputKind": "company-candidates"
+    },
+    {
+      "name": "get_company_profile",
+      "description": "按 companyId 查询企业基本资料。",
+      "inputSchema": { "$ref": "#/$defs/companyIdInput" },
+      "outputKind": "company-profile"
+    },
+    {
+      "name": "get_company_financials",
+      "description": "按 companyId 查询统一报告期范围内的财务指标。",
+      "inputSchema": { "$ref": "#/$defs/companyIdInput" },
+      "outputKind": "company-financials"
+    },
+    {
+      "name": "get_company_intellectual_property",
+      "description": "按 companyId 查询专利、软件著作权和产品证据。",
+      "inputSchema": { "$ref": "#/$defs/companyIdInput" },
+      "outputKind": "company-intellectual-property"
+    },
+    {
+      "name": "get_company_risks",
+      "description": "按 companyId 查询失信、违法、行政处罚和欠税证据。",
+      "inputSchema": { "$ref": "#/$defs/companyIdInput" },
+      "outputKind": "company-risks"
+    },
+    {
+      "name": "get_company_relationships",
+      "description": "按 companyId 查询股东、客户和供应商关系证据。",
+      "inputSchema": { "$ref": "#/$defs/companyIdInput" },
+      "outputKind": "company-relationships"
+    }
+  ],
+  "outputEnvelope": {
+    "type": "object",
+    "additionalProperties": false,
+    "required": ["subject", "asOf", "items", "total", "truncated", "evidence"],
+    "properties": {
+      "subject": {
+        "type": ["object", "null"],
+        "properties": {
+          "companyId": { "type": "string" },
+          "companyName": { "type": "string" },
+          "unifiedSocialCreditCode": { "type": ["string", "null"] }
+        }
+      },
+      "asOf": { "type": "string", "format": "date-time" },
+      "items": { "type": "array" },
+      "total": { "type": "integer", "minimum": 0 },
+      "truncated": { "type": "boolean" },
+      "evidence": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "additionalProperties": false,
+          "required": ["source", "dataset", "recordId", "observedAt"],
+          "properties": {
+            "source": { "const": "HS_ENTERPRISE_ES" },
+            "dataset": { "type": "string" },
+            "recordId": { "type": "string" },
+            "observedAt": { "type": "string", "format": "date-time" }
+          }
+        }
+      }
+    }
+  },
+  "$defs": {
+    "companyIdInput": {
+      "type": "object",
+      "additionalProperties": false,
+      "required": ["companyId"],
+      "properties": {
+        "companyId": { "type": "string", "minLength": 1, "maxLength": 100 }
+      }
+    }
+  }
+}

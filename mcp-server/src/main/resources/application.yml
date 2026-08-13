@@ -1,0 +1,55 @@
+spring:
+  application:
+    name: enterprise-evidence-mcp-server
+  ai:
+    mcp:
+      server:
+        enabled: true
+        protocol: STREAMABLE
+        name: enterprise-evidence
+        version: 0.1.0
+        type: SYNC
+        instructions: 仅查询企业事实白名单数据并返回可追溯证据
+        capabilities:
+          tool: true
+          resource: false
+          prompt: false
+          completion: false
+        resource-change-notification: false
+        prompt-change-notification: false
+        tool-change-notification: false
+        streamable-http:
+          mcp-endpoint: /mcp
+  datasource:
+    url: ${SNAPSHOT_DB_URL:jdbc:postgresql://192.168.201.203:5432/kjjr_inx_brain?currentSchema=test}
+    username: ${SNAPSHOT_DB_USERNAME:}
+    password: ${SNAPSHOT_DB_PASSWORD:}
+    hikari:
+      schema: test
+      read-only: true
+      connection-init-sql: SET default_transaction_read_only = on
+      maximum-pool-size: 3
+  cloud:
+    nacos:
+      discovery:
+        register-enabled: false
+
+server:
+  port: ${MCP_PORT:19091}
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: health,info
+
+enterprise-evidence:
+  snapshot:
+    expected-database: kjjr_inx_brain
+    expected-schema: test
+    verify-on-startup: true
+  elasticsearch:
+    addresses: ${ES_ADDRESSES:}
+    scheme: ${ES_SCHEMA:http}
+    username: ${ES_USERNAME:}
+    password: ${ES_PASSWORD:}

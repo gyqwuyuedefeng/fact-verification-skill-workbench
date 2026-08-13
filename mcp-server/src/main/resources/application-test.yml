@@ -1,0 +1,9 @@
+spring:
+  cloud:
+    nacos:
+      discovery:
+        register-enabled: false
+
+logging:
+  level:
+    com.hsmap.factverification.mcp: INFO
