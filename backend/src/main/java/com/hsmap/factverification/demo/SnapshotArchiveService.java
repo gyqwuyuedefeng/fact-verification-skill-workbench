@@ -62,6 +62,8 @@ public class SnapshotArchiveService {
     private static final String EXPORT_ROOT = ".demo-export";
     private static final int EOCD_MINIMUM_BYTES = 22;
     private static final int EOCD_MAXIMUM_TAIL_BYTES = EOCD_MINIMUM_BYTES + 65_535;
+    private static final int CENTRAL_DIRECTORY_FIXED_HEADER_BYTES = 46;
+    private static final int CENTRAL_DIRECTORY_SIGNATURE = 0x02014b50;
     private static final List<String> MANAGED_DIRECTORIES = List.of("uploads", "skill-snapshots", "skill-runtime");
     private static final List<SnapshotTable> IMPORT_ORDER = List.of(
             SnapshotTable.SKILL_VERSION,
@@ -501,8 +503,8 @@ public class SnapshotArchiveService {
      * 在 Commons Compress 建立完整中央目录索引前，仅解析文件尾 EOCD 的固定字段。
      *
      * <p>200 MiB/2000 entry 的比赛快照不需要 ZIP64 或分卷；先用最多 65,557 字节尾部窗口拒绝声明过多条目的小型恶意 ZIP，
-     * 避免成熟 ZIP 解析器尚未获得控制权前就为数十万中央目录记录分配对象。这里只校验 EOCD 汇总和范围，不自行解析中央目录记录；
-     * 后续 entry 语义、Unix symlink 和压缩特性仍完全交由 Commons Compress。
+     * 避免成熟 ZIP 解析器尚未获得控制权前就为数十万中央目录记录分配对象。随后以单个 46 字节缓冲扫描 CEN 固定头和三个长度字段，
+     * 不读取文件名、不构造 entry 对象；entry 语义、Unix symlink 和压缩特性仍完全交由 Commons Compress。
      */
     private EocdSummary preflightEocd(Path archivePath) throws IOException {
         try (FileChannel channel = FileChannel.open(archivePath, StandardOpenOption.READ)) {
@@ -552,11 +554,67 @@ public class SnapshotArchiveService {
             }
             long absoluteEocd = tailStart + eocdOffset;
             if (centralOffset > absoluteEocd
-                    || centralSize > absoluteEocd - centralOffset
-                    || centralOffset + centralSize > fileSize) {
+                    || centralSize != absoluteEocd - centralOffset) {
                 throw invalidZipIndex();
             }
+            scanCentralDirectoryBeforeCommons(channel, centralOffset, absoluteEocd, totalEntries);
             return new EocdSummary(totalEntries);
+        }
+    }
+
+    /**
+     * 用固定小缓冲验证 EOCD 指定范围内的每个 CEN 记录，且在第 2,001 项进入对象解析前立即拒绝。
+     *
+     * <p>这里只读取 CEN 的固定 46 字节头，并按 little-endian 的 name/extra/comment 长度安全推进 long cursor；
+     * 不读取变长内容、不创建名称字符串或 ZipArchiveEntry。中央目录数字签名、SFX offset 修正及其他额外结构在 MVP 中 fail closed。
+     */
+    private void scanCentralDirectoryBeforeCommons(
+            FileChannel channel, long centralOffset, long absoluteEocd, int declaredEntries) throws IOException {
+        ByteBuffer fixedHeader = ByteBuffer.allocate(CENTRAL_DIRECTORY_FIXED_HEADER_BYTES)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        long cursor = centralOffset;
+        int actualEntries = 0;
+        while (cursor < absoluteEocd) {
+            if (actualEntries >= maxEntryCount) {
+                throw new ServiceException("DEMO_SNAPSHOT_ENTRY_LIMIT_EXCEEDED", "快照文件数量超过限制");
+            }
+            long remaining = absoluteEocd - cursor;
+            if (remaining < CENTRAL_DIRECTORY_FIXED_HEADER_BYTES) {
+                throw invalidZipIndex();
+            }
+            fixedHeader.clear();
+            readFixedHeader(channel, fixedHeader, cursor);
+            fixedHeader.flip();
+            if (fixedHeader.getInt(0) != CENTRAL_DIRECTORY_SIGNATURE) {
+                throw invalidZipIndex();
+            }
+            int nameLength = Short.toUnsignedInt(fixedHeader.getShort(28));
+            int extraLength = Short.toUnsignedInt(fixedHeader.getShort(30));
+            int commentLength = Short.toUnsignedInt(fixedHeader.getShort(32));
+            long recordLength = CENTRAL_DIRECTORY_FIXED_HEADER_BYTES
+                    + (long) nameLength
+                    + extraLength
+                    + commentLength;
+            if (recordLength > remaining) {
+                throw invalidZipIndex();
+            }
+            cursor += recordLength;
+            actualEntries++;
+        }
+        if (cursor != absoluteEocd || actualEntries != declaredEntries) {
+            throw invalidZipIndex();
+        }
+    }
+
+    /** positional read 必须填满同一个固定头；普通文件意外返回 0 或提前 EOF 均按截断归档拒绝。 */
+    private static void readFixedHeader(FileChannel channel, ByteBuffer target, long offset) throws IOException {
+        long position = offset;
+        while (target.hasRemaining()) {
+            int read = channel.read(target, position);
+            if (read <= 0) {
+                throw invalidZipIndex();
+            }
+            position += read;
         }
     }
 

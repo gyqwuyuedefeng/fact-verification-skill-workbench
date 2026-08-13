@@ -109,6 +109,64 @@ class SnapshotArchiveServiceTest {
     }
 
     /**
+     * 测试场景：EOCD 把 2,001 个真实 CEN 固定头伪报为 1 个 entry。
+     * 前置条件：中央目录本身很小且不含 local data；测试通过反射只调用 Commons builder 之前的预检阶段。
+     * 期望结果：预检按 CEN 记录实际推进，在准备读取第 2,001 项前稳定拒绝。
+     * 断言重点：不能等 Commons Compress 已为全部记录创建对象后，再用实际枚举数发现伪造。
+     */
+    @Test
+    void rejectsActualCentralDirectoryCountBeyondLimitWhenEocdUnderreports() throws Exception {
+        Path zip = writeCentralDirectoryOnlyZip(2_001, 1, new byte[0]);
+        SnapshotArchiveService archive = archive(mock(DemoStateRepository.class), mock(DemoStateService.class));
+
+        assertThatThrownBy(() -> invokeEocdPreflightOnly(archive, zip))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("文件数量超过限制");
+    }
+
+    /**
+     * 测试场景：真实 EOCD 的 comment 开头伪造第二个 EOCD，且伪 commentLength 恰好延伸到文件尾。
+     * 前置条件：伪 EOCD 声明的中央目录范围吞入真实 EOCD，旧尾部搜索会把它误认为最终记录。
+     * 期望结果：CEN 固定头扫描因终点前出现非 CEN/截断结构而拒绝，不能回退接受更早记录。
+     * 断言重点：comment 内签名不能改变受信中央目录边界。
+     */
+    @Test
+    void rejectsFakeEocdInsideCommentBeforeCommonsBuilder() throws Exception {
+        ByteBuffer fake = ByteBuffer.allocate(30).order(ByteOrder.LITTLE_ENDIAN);
+        fake.putInt(0x06054b50);
+        fake.putShort((short) 0);
+        fake.putShort((short) 0);
+        fake.putShort((short) 1);
+        fake.putShort((short) 1);
+        fake.putInt(68);
+        fake.putInt(0);
+        fake.putShort((short) 8);
+        fake.putLong(0L);
+        Path zip = writeCentralDirectoryOnlyZip(1, 1, fake.array());
+        SnapshotArchiveService archive = archive(mock(DemoStateRepository.class), mock(DemoStateService.class));
+
+        assertThatThrownBy(() -> invokeEocdPreflightOnly(archive, zip))
+                .isInstanceOf(ServiceException.class)
+                .hasMessageContaining("中央目录索引无效");
+    }
+
+    /**
+     * 测试场景：合法 v1 快照携带普通 ZIP comment。
+     * 前置条件：comment 不包含伪边界，七表与 manifest 均为完整空数据快照。
+     * 期望结果：预检与后续 Commons 解析、manifest 校验全部通过。
+     * 断言重点：安全扫描只拒绝歧义结构，不禁止 ZIP 规范允许的普通 comment。
+     */
+    @Test
+    void acceptsValidSnapshotWithOrdinaryZipComment() throws Exception {
+        Path zip = writeZipWithComment(validArchiveEntries(SnapshotManifest.FORMAT_VERSION), "比赛快照普通注释");
+
+        SnapshotArchiveService.StagedSnapshot staged =
+                archive(mock(DemoStateRepository.class), mock(DemoStateService.class)).validateAndStage(zip);
+
+        assertThat(staged.manifest().formatVersion()).isEqualTo(SnapshotManifest.FORMAT_VERSION);
+    }
+
+    /**
      * 测试场景：上传的原始 ZIP 在读取完成前超过配置的 200 MB 等价上限。
      * 前置条件：测试通过缩小上限的配置替身避免构造 200 MB 内存对象。
      * 期望结果：服务立即拒绝，并且不会进入数据库导入。
@@ -745,23 +803,66 @@ class SnapshotArchiveServiceTest {
      * <p>该构造物不是可解压归档；它专门证明 EOCD entry 上限在 Commons Compress 构建中央目录索引前生效。
      */
     private Path writeCentralDirectoryOnlyZip(int entryCount) throws Exception {
-        int centralDirectorySize = Math.multiplyExact(entryCount, 46);
-        ByteBuffer bytes = ByteBuffer.allocate(centralDirectorySize + 22).order(ByteOrder.LITTLE_ENDIAN);
-        for (int index = 0; index < entryCount; index++) {
+        return writeCentralDirectoryOnlyZip(entryCount, entryCount, new byte[0]);
+    }
+
+    /** 写入可分别控制实际 CEN 数、EOCD 声明数与 comment 的安全边界测试归档。 */
+    private Path writeCentralDirectoryOnlyZip(int actualEntryCount, int declaredEntryCount, byte[] comment)
+            throws Exception {
+        int centralDirectorySize = Math.multiplyExact(actualEntryCount, 46);
+        ByteBuffer bytes = ByteBuffer.allocate(centralDirectorySize + 22 + comment.length)
+                .order(ByteOrder.LITTLE_ENDIAN);
+        for (int index = 0; index < actualEntryCount; index++) {
             bytes.putInt(0x02014b50);
             bytes.position(bytes.position() + 42);
         }
         bytes.putInt(0x06054b50);
         bytes.putShort((short) 0);
         bytes.putShort((short) 0);
-        bytes.putShort((short) entryCount);
-        bytes.putShort((short) entryCount);
+        bytes.putShort((short) declaredEntryCount);
+        bytes.putShort((short) declaredEntryCount);
         bytes.putInt(centralDirectorySize);
         bytes.putInt(0);
-        bytes.putShort((short) 0);
+        bytes.putShort((short) comment.length);
+        bytes.put(comment);
         Path zip = Files.createTempFile(temporaryRoot, "central-directory-only-", ".zip");
         Files.write(zip, bytes.array());
         return zip;
+    }
+
+    /** 使用 JDK ZIP writer 生成真实 local/CEN/EOCD，并保留合法 comment。 */
+    private Path writeZipWithComment(Map<String, byte[]> entries, String comment) throws Exception {
+        Path zip = Files.createTempFile(temporaryRoot, "snapshot-comment-", ".zip");
+        try (ZipOutputStream output = new ZipOutputStream(Files.newOutputStream(zip))) {
+            output.setComment(comment);
+            for (Map.Entry<String, byte[]> entry : entries.entrySet()) {
+                output.putNextEntry(new ZipEntry(entry.getKey()));
+                output.write(entry.getValue());
+                output.closeEntry();
+            }
+        }
+        return zip;
+    }
+
+    /**
+     * 只调用私有 EOCD 安全预检，避免 Commons Compress builder 的后置枚举检查掩盖预检缺口。
+     *
+     * <p>反射仅用于本次安全阶段探针；若预检内部抛出业务异常，解包后保留其真实类型和错误码供断言。
+     */
+    private static void invokeEocdPreflightOnly(SnapshotArchiveService archive, Path zip) throws Exception {
+        java.lang.reflect.Method method = SnapshotArchiveService.class.getDeclaredMethod("preflightEocd", Path.class);
+        method.setAccessible(true);
+        try {
+            method.invoke(archive, zip);
+        } catch (java.lang.reflect.InvocationTargetException exception) {
+            if (exception.getCause() instanceof Exception cause) {
+                throw cause;
+            }
+            if (exception.getCause() instanceof Error cause) {
+                throw cause;
+            }
+            throw new AssertionError("EOCD 预检抛出未知 Throwable", exception.getCause());
+        }
     }
 
     /** 读取导出结果的全部 entry，测试数据规模很小，不影响生产流式实现约束。 */
