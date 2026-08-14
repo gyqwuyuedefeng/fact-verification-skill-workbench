@@ -33,7 +33,7 @@ public class ReleaseController {
                 .body(releases.register(command.candidateVersionId(), command.evaluationRunId(), command.reason()));
     }
 
-    /** 开启后，仅显式勾选影子的真实任务会后台运行 Candidate。 */
+    /** 开启后，所有新建的 Stable 正式任务都会自动在后台运行 Candidate；普通用户无需、也不能选择影子。 */
     @PostMapping("/shadow/start")
     public ReleaseStateView startShadow(
             @RequestHeader("Idempotency-Key") String requestId, @Valid @RequestBody ReasonCommand command) {
