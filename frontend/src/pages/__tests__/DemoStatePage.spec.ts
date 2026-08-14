@@ -24,6 +24,23 @@ function response(body: unknown, ok = true): Response {
   return { ok, status: ok ? 200 : 503, json: async () => body } as Response
 }
 
+/**
+ * 浏览器要求请求头值只能由单字节字符组成；这里同时验证 Fetch 可接收该值，
+ * 并按后端约定把这些单字节重新解释为 UTF-8，确保确认短语没有被改写。
+ */
+function expectUtf8ConfirmationHeader(init: RequestInit | undefined, expected: string) {
+  const headers = init?.headers as Record<string, string> | undefined
+  const value = headers?.['X-Confirmation-Phrase']
+
+  expect(value).toBeTypeOf('string')
+  expect(() => new Headers(headers)).not.toThrow()
+  expect(Array.from(value!, (character) => character.charCodeAt(0))).toSatisfy(
+    (codes: number[]) => codes.every((code) => code <= 0xff),
+  )
+  const bytes = Uint8Array.from(value!, (character) => character.charCodeAt(0))
+  expect(new TextDecoder().decode(bytes)).toBe(expected)
+}
+
 function mountPage() {
   const pinia = createPinia()
   setActivePinia(pinia)
@@ -129,9 +146,9 @@ describe('DemoStatePage', () => {
     const [, init] = fetchMock.mock.calls[1] ?? []
     expect(init).toMatchObject({ method: 'POST' })
     expect(init?.headers).toMatchObject({
-      'X-Confirmation-Phrase': '导入内置演示数据',
       'Idempotency-Key': expect.stringMatching(/^demo-import-builtin-[A-Za-z0-9-]{20,}$/),
     })
+    expectUtf8ConfirmationHeader(init, '导入内置演示数据')
   })
 
   it.each([
@@ -200,7 +217,9 @@ describe('DemoStatePage', () => {
     await vi.waitFor(() => expect(fetchMock).toHaveBeenCalledTimes(3))
     await vi.waitFor(() => expect(store.busy).toBe(false))
 
-    expect(fetchMock.mock.calls[1]?.[1]).toMatchObject({ method: 'POST' })
+    const importInit = fetchMock.mock.calls[1]?.[1]
+    expect(importInit).toMatchObject({ method: 'POST' })
+    expectUtf8ConfirmationHeader(importInit, '导入快照')
     expect(store.state?.tableCounts.claim).toBe(2)
   })
 

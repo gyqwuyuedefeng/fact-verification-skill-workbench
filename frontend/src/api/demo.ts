@@ -20,6 +20,14 @@ function jsonHeaders(idempotencyKey: string): HeadersInit {
   return { 'Content-Type': 'application/json', 'Idempotency-Key': idempotencyKey }
 }
 
+/**
+ * Fetch 的 Header 值只能包含单字节字符，因此不能直接写入中文确认短语。
+ * 将 UTF-8 原始字节逐个映射为 ISO-8859-1 字符，后端再按同一固定规则严格还原。
+ */
+function utf8ConfirmationHeader(value: string): string {
+  return Array.from(new TextEncoder().encode(value), (byte) => String.fromCharCode(byte)).join('')
+}
+
 async function request<T>(url: string, init?: RequestInit): Promise<T> {
   const response = await fetch(url, init)
   if (!response.ok) {
@@ -47,7 +55,7 @@ export function importSnapshot(file: File): Promise<DemoState> {
     headers: {
       'Content-Type': 'application/zip',
       'Idempotency-Key': requestId('demo-import'),
-      'X-Confirmation-Phrase': '导入快照',
+      'X-Confirmation-Phrase': utf8ConfirmationHeader('导入快照'),
     },
     body: file,
   })
@@ -58,7 +66,7 @@ export function importBuiltinDemoState(): Promise<DemoState> {
     method: 'POST',
     headers: {
       'Idempotency-Key': requestId('demo-import-builtin'),
-      'X-Confirmation-Phrase': '导入内置演示数据',
+      'X-Confirmation-Phrase': utf8ConfirmationHeader('导入内置演示数据'),
     },
   })
 }
