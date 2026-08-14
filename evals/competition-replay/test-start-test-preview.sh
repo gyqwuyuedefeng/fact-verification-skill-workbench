@@ -5,10 +5,14 @@ set -euo pipefail
 
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 project_root="$(cd -- "$script_directory/../.." && pwd -P)"
-standardized_products_root="$(cd -- "$project_root/.." && pwd -P)"
+git_common_directory="$(git -C "$project_root" rev-parse --path-format=absolute --git-common-dir)"
+primary_project_root="$(cd -- "$(dirname -- "$git_common_directory")" && pwd -P)"
+standardized_products_root="$(cd -- "$primary_project_root/.." && pwd -P)"
 launcher="$script_directory/start-test-preview.sh"
 firelm_env="$standardized_products_root/ai-firelm/backend/.env.staging"
 metastart_dev="$standardized_products_root/metastart/src/main/resources/application-dev.yml"
+smoke_manifest="$project_root/evals/live-smoke-manifest.json"
+smoke_dataset="$project_root/evals/live-smoke-dataset.jsonl"
 
 fail() {
   printf 'FAIL: %s\n' "$1" >&2
@@ -32,6 +36,10 @@ grep -Fq -- '--print-config' "$launcher" || fail '启动脚本尚未实现 --pri
 # 前端后台 PID 必须由子 shell 通过 exec 替换成真实 Vite 进程；否则 Ctrl+C 只会结束 npm 外壳并遗留监听端口。
 grep -Fq -- 'exec env CHOKIDAR_USEPOLLING=true ./node_modules/.bin/vite' "$launcher" \
   || fail '前端启动尚未把受管 PID 绑定到真实 Vite 进程'
+[[ -f "$smoke_manifest" && -f "$smoke_dataset" ]] || fail '三条现场快速评测资产缺失'
+grep -Fq -- '"version": "public-tech-live-smoke-v1"' "$smoke_manifest" \
+  || fail '快速评测清单版本不正确'
+[[ "$(grep -cve '^[[:space:]]*$' "$smoke_dataset")" -eq 3 ]] || fail '快速评测必须恰好包含三条样本'
 
 set +e
 missing_mode_output="$(bash "$launcher" 2>&1)"

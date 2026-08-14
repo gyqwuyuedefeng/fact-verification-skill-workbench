@@ -12,7 +12,7 @@
 - `backend/`：Spring Boot + AgentScope Java 2.0.1，负责材料解析、Agent、评测、Skill 版本和发布状态。
 - `mcp-server/`：Spring AI 原生 Streamable HTTP `/mcp`，只提供六个企业证据工具；不存在旧 SSE 握手或 message 双端点。
 - `frontend/`：Vue 3 + TypeScript + Pinia，普通入口提供核验对话，管理入口提供评测、Skill 和影子发布三个页面。
-- `evals/`：固定 30 条金标、三份纯模拟演示材料及后续导出的报告。
+- `evals/`：固定 3 条现场快速金标、30 条正式金标、纯模拟演示材料及后续导出的报告。
 - `skills/company-material-fact-check/`：初始 Skill 和核验规则。
 
 浏览器任务进度使用业务事件流；这与 Agent 到 MCP 的 Streamable HTTP 是两条不同链路。
@@ -41,7 +41,7 @@ Java 只能使用 hsmap 的 WSL Maven 安全包装器：
 /mnt/g/Obsidian/code/01_System_Core/scripts/maven/run-wsl.sh \
   --project /mnt/f/IdeaProjects/hsmap/standardized-products/fact-verification-skill-workbench \
   --log /mnt/f/IdeaProjects/hsmap/.tmp/fact-verification-logs/maven-clean-install.log \
-  -- clean install
+  -- clean install -Dspring.profiles.active=test
 ```
 
 前端：
@@ -69,13 +69,6 @@ bash evals/competition-replay/start-test-preview.sh intranet
 ```
 
 两种模式只改变三个外部依赖的地址，MCP、后端和前端始终在本机使用 `19091`、`19090`、`15173` 端口。`intranet` 模式从 `ai-firelm/backend/.env.staging` 读取测试 PG 和当前公司模型地址，从 metastart `application-dev.yml` 读取 dev ES 地址；PG schema 无论哪种模式都强制为 `test`。用户名、密码和可选模型密钥只注入子进程，不会打印或复制到本项目。
-
-启动前可先查看脱敏后的生效配置，不会启动服务：
-
-```bash
-bash evals/competition-replay/start-test-preview.sh wsl --print-config
-bash evals/competition-replay/start-test-preview.sh intranet --print-config
-```
 
 出现 `PREVIEW_READY` 后打开 `http://127.0.0.1:15173`。结束时在启动终端按 `Ctrl+C`，脚本会按本次 PID 精确关闭前端、后端和 MCP。日志分别写入 `/mnt/f/IdeaProjects/hsmap/.tmp/fact-verification-logs/live-preview-wsl/` 或 `live-preview-intranet/`。
 
@@ -105,7 +98,7 @@ bash evals/competition-replay/start-test-preview.sh intranet --print-config
 
 1. 在“演示数据管理”点击“清空并从第 1 步开始”，精确输入确认短语后，从空状态开始。
 2. 在“Skill 版本实验室”新建草稿，选择 `01-initial`（初始稳定版）并点击“加载到本地”，再依次“保存草稿（DRAFT）”和“冻结为候选版（CANDIDATE）”。
-3. 在“管理评测”使用候选版下拉框运行首次 `BASELINE + CANDIDATE` 评测；在“影子与发布”通过版本和评测下拉框完成初始注册与稳定版（STABLE）建立。
+3. 在“管理评测”先用默认“现场快速评测（3 条）”确认真实链路，再切换“正式完整评测（30 条）”运行首次 `BASELINE + CANDIDATE`；只有正式批次能在“影子与发布”完成初始注册与稳定版（STABLE）建立。
 4. 从稳定版克隆草稿，加载 `02-improved`（优化候选版），保存并冻结；随后运行 `BASELINE + STABLE + CANDIDATE` 三版本同条件评测。
 5. 在“影子与发布”注册门禁通过的候选版，开启影子；从“事实核验对话”用稳定版提交授权材料，人工复核影子结果并标记“人工通过（PASS）”，再执行“晋升稳定版（STABLE）”和“回滚上一版”。
 6. `03-regression`（回归失败版）只用于运行门禁失败证明：预期“管理评测”显示“门禁未通过（FAIL）”，不得注册或晋升。
@@ -115,5 +108,11 @@ bash evals/competition-replay/start-test-preview.sh intranet --print-config
 1. 确认七张业务表和三个受管目录均为空；在“演示数据管理”点击“导入固定脱敏内置状态”。
 2. 使用“管理评测”“Skill 版本实验室”“影子与发布”的页面下拉框查看四个版本、三个评测、影子人工通过/未通过和追加式发布历史。
 3. 内置状态是固定脱敏 fixture，导入过程不调用模型，页面结果不是本次现场重新生成；只能用于快速讲解完整链路，不能冒充现场真实运行结果。
+
+## 快速评测与正式评测
+
+“管理评测”的“发起新评测”默认选择 `public-tech-live-smoke-v1`，它恰好包含三条从正式集逐字段复用的样本：科大讯飞 2024 年营收（预期 VERIFIED）、科大讯飞否定性风险断言（预期 INSUFFICIENT）和用友网络 2023 年营收冲突（预期 CONFLICT）。它真实调用同一公司模型、Agent、MCP、ES、证据冻结和评分器，适合现场快速确认链路；但前端不会把它列入发布评测下拉框，后端也会以 `EVALUATION_NOT_RELEASE_ELIGIBLE` 拒绝注册。
+
+要注册 Candidate 或建立初始 Stable，必须主动切换到 `public-tech-2024-v3`“正式完整评测（30 条）”，且该批次必须已完成并通过门禁。“查看历史结果”仅执行 GET 读取，不会重新运行评测，也不会覆盖“发起新评测”的当前选择。
 
 只有真实公司模型、测试 PG 和 dev 同源 ES 的内网联调完成后，才能把 `evals/reports/` 中的报告作为比赛最终证据。

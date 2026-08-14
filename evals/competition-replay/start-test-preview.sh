@@ -34,8 +34,13 @@ fi
 
 script_directory="$(cd -- "$(dirname -- "${BASH_SOURCE[0]}")" && pwd -P)"
 project_root="$(cd -- "$script_directory/../.." && pwd -P)"
-standardized_products_root="$(cd -- "$project_root/.." && pwd -P)"
-hsmap_root="$(cd -- "$project_root/../.." && pwd -P)"
+# worktree 中的项目目录位于主仓库内部，不能再按当前目录的父级推算兄弟项目。
+# Git 公共目录始终属于主仓库；只用它定位 FireLM/metastart 配置和统一日志目录，
+# 实际启动的代码与构建产物仍来自当前 project_root。
+git_common_directory="$(git -C "$project_root" rev-parse --path-format=absolute --git-common-dir)"
+primary_project_root="$(cd -- "$(dirname -- "$git_common_directory")" && pwd -P)"
+standardized_products_root="$(cd -- "$primary_project_root/.." && pwd -P)"
+hsmap_root="$(cd -- "$primary_project_root/../.." && pwd -P)"
 log_root="$hsmap_root/.tmp/fact-verification-logs/live-preview-$start_mode"
 firelm_env="$standardized_products_root/ai-firelm/backend/.env.staging"
 metastart_dev="$standardized_products_root/metastart/src/main/resources/application-dev.yml"

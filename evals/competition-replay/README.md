@@ -14,6 +14,7 @@
 | Excel 公式演示 | `../demo-materials/08-模拟企业财务台账.xlsx` | 验证工作表、单元格、万元单位和公式文本保留 |
 | 影子 PASS 材料 | `../demo-materials/04-影子灰度-科大讯飞经营事实.md` | 开启影子后以 Stable 提交；正式答案仍只来自 Stable，后台产生 Candidate 对照 |
 | 影子 FAIL 按钮材料 | `../demo-materials/05-影子灰度-金山办公风险事实.md` | 演示否定性风险覆盖边界和人工 FAIL，不把影子结果当金标准确率 |
+| 现场快速评测集 | `../live-smoke-dataset.jsonl` + `../live-smoke-manifest.json` | 管理评测页默认选择；3 条真实样本，完整调用模型、Agent、MCP 与 ES，但不能注册或发布 |
 | 管理员固定评测集 | `../dataset.jsonl` | 管理评测页自动读取，不需要逐条上传 |
 | 评测集版本与固定顺序 | `../manifest.json` | 锁定 `public-tech-2024-v3`、30 条样本及运行顺序；v1/v2 缺陷资产已单独归档 |
 
@@ -31,14 +32,7 @@ bash evals/competition-replay/start-test-preview.sh intranet
 
 `wsl` 模式固定使用测试 PostgreSQL、dev ES 和公司模型的本机受管转发；`intranet` 模式从 FireLM 测试配置读取测试 PG 和当前公司模型真实地址，从 metastart dev 配置读取真实 ES 地址。两种模式均固定使用 `test` profile、`register-enabled=false` 和 `kjjr_inx_brain.test`，且本机 MCP/后端/前端端口不变。
 
-只查看脱敏后的生效地址而不启动服务：
-
-```bash
-bash evals/competition-replay/start-test-preview.sh wsl --print-config
-bash evals/competition-replay/start-test-preview.sh intranet --print-config
-```
-
-脚本不会把用户名、密码或模型密钥复制到复演目录或打印到终端。出现 `PREVIEW_READY` 后打开 `http://127.0.0.1:15173` 再执行下方场景；结束时在启动终端按 `Ctrl+C`，脚本精确关闭本次三个进程。日志按模式保存在 `.tmp/fact-verification-logs/live-preview-wsl/` 或 `live-preview-intranet/`。
+脚本不会把用户名、密码或模型密钥复制到复演目录或打印到终端。直接启动，出现 `PREVIEW_READY` 后打开 `http://127.0.0.1:15173` 再执行下方场景；结束时在启动终端按 `Ctrl+C`，脚本精确关闭本次三个进程。日志按模式保存在 `.tmp/fact-verification-logs/live-preview-wsl/` 或 `live-preview-intranet/`。
 
 自动化入口（另开终端执行）：
 
@@ -63,13 +57,22 @@ bash evals/competition-replay/run-full-competition-browser-tests.sh
 3. 粘贴场景 2，检查错误金额不能被判为已核实。
 4. 先上传 Markdown、TXT、CSV 三份模拟附件；完整格式复验再上传 Word、PDF、PPT、Excel，使用 `prompts.md` 场景 3—5、8—10。
 5. 若已经存在 Stable，再用相同输入切换 `Stable` 重跑；普通用户只看到当前选择模式的正式结果。
+6. 打开“管理评测”，默认选择“现场快速评测（3 条）”，选择 Candidate 后运行；它用于现场证明三变体真实可跑，但页面和后端都禁止用它注册或发布。
+
+快速集固定复用正式金标中的三条原始记录，内容和评分标准没有改写：
+
+1. `iflytek-finance`：科大讯飞 2024 年营业收入，预期“已核验（VERIFIED）”。
+2. `iflytek-risk`：科大讯飞 2024 年“无任何风险记录”的否定性断言，预期“证据不足（INSUFFICIENT）”。
+3. `yonyou-period-conflict`：用友网络 2023 年营业收入与证据金额冲突，预期“存在冲突（CONFLICT）”。
+
+“查看历史结果”只读取并展示已经存在的批次，不会再次发起评测，也不会改变右侧“发起新评测”的数据集选择。
 
 ### 二、完整比赛演示（约 15 分钟）
 
 1. 在 Skill 实验室建立并冻结初始 Candidate。
-2. 管理评测页首次运行 `BASELINE + Candidate` 的同条件 30 条评测，通过后将 Candidate 建立为初始 Stable。
+2. 管理评测页先用默认 3 条快速集确认链路，再切换“正式完整评测（30 条）”运行 `BASELINE + Candidate`；只有正式批次通过后才能将 Candidate 建立为初始 Stable。
 3. 从 Stable 克隆新 DRAFT，加入“否定性风险主张不能因空结果直接判真”的规则，冻结为新 Candidate。
-4. 管理评测页运行 `BASELINE + Stable + Candidate`，查看四指标、版本汇总、单样本下钻和与上一版对比。
+4. 管理评测页可先跑三条快速反馈，再切换正式 30 条运行 `BASELINE + Stable + Candidate`，查看四指标、版本汇总、单样本下钻和与上一版对比。
 5. 注册通过门禁的 Candidate，开启影子；普通用户仍只收到 Stable 正式结果。
 6. 管理员在发布管理页查看同一输入的 PRIMARY/SHADOW 对照，人工标记 PASS。
 7. 晋升 Candidate，提交一条新任务确认新 Stable 生效；随后回滚并确认后续任务恢复到旧 Stable。
@@ -81,6 +84,7 @@ bash evals/competition-replay/run-full-competition-browser-tests.sh
 - `Candidate`：待评测/待灰度的新版本，只在管理员离线评测或影子运行中出现。
 - 三个变体共享同一数据集、同一输入、同一模型、同一工具、同一证据快照和同一生成参数；生成参数显式包含 `enableThinking=false` 与 `maxTokens=8192`，因此差异可归因到 Skill。
 - 核心指标是准确率、任务完成率、稳定性、人工介入率；版本之间的结果要看总体指标，也要下钻失败样本。
+- 快速 3 条与正式 30 条使用同一执行和评分代码；快速集只缩短现场等待，不具有发布资格，正式集才是比赛门禁证据。
 
 `v3` 的支持性金标只引用当前六个 MCP 工具可返回的 dev 同源 ES `recordId`；`v2` 虽已纠正股票代码，仍引用了运行时工具不可见的年报记录，已归档而不用于正式分数。
 
