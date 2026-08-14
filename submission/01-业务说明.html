@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <title>企业材料事实核验 Skill Workbench</title>
+  <style>
+    @page { size: A4; margin: 15mm 17mm; }
+    * { box-sizing: border-box; }
+    body { margin: 0; color: #10233e; font-family: "Microsoft YaHei", "Noto Sans CJK SC", sans-serif; font-size: 10.4pt; line-height: 1.58; }
+    h1 { margin: 0 0 8px; color: #0a7f7a; font-size: 22pt; letter-spacing: .4px; }
+    .subtitle { margin-bottom: 13px; color: #52677f; font-size: 10pt; }
+    h2 { margin: 9px 0 3px; color: #0a7f7a; font-size: 12.5pt; }
+    p { margin: 0; text-align: justify; }
+    .result { margin: 10px 0 4px; padding: 9px 12px; border-left: 4px solid #17a99f; background: #eef9f8; }
+    .result strong { color: #076c68; }
+    .footer { margin-top: 10px; padding-top: 7px; border-top: 1px solid #ced8e4; color: #607087; font-size: 8.7pt; }
+  </style>
+</head>
+<body>
+  <h1>企业材料事实核验 Skill Workbench</h1>
+  <div class="subtitle">让企业事实核验能力可运行、可评价、可解释、可发布、可回滚</div>
+
+  <h2>业务问题</h2>
+  <p>企业尽调、产业研究和材料审核经常需要核对工商、财务、知识产权、风险与股权关系等事实。通用大模型能够读懂材料，却容易混淆同名主体、忽略年度与金额单位、把“查询不到”误判成“不存在”，也很难回答“新版本是否真的更好、出了问题能否立即恢复”。</p>
+
+  <h2>解决方案</h2>
+  <p>本项目基于公司同一个千问模型构建企业材料事实核验 Skill/Agent。用户可输入文本或上传 Markdown、TXT、CSV、Word、PDF、PPT、Excel；系统依次展示材料解析、执行轨迹和核验主张，并通过六个只读企业证据工具查询主体、工商、财务、知识产权、风险和关系数据。每条结论只能是已核实、存在冲突或证据不足，保留材料位置、证据记录和人工介入提示，不能仅凭模型记忆断言。</p>
+
+  <div class="result"><strong>同条件真实复测：</strong>固定 30 条金标，Baseline 准确率 86.67%，初始 Stable 90.00%，优化 Candidate 93.33%；三者任务完成率和稳定性均为 100%，人工介入率均为 23.33%。Candidate 相比 Baseline 提升 6.66 个百分点，相比 Stable 提升 3.33 个百分点。</div>
+
+  <h2>可复现评价</h2>
+  <p>三个变体使用相同数据、输入、公司模型、采样参数、工具契约、证据快照和输出结构，只改变是否加载某个冻结 Skill。汇总指标可下钻到单条输入、金标准、三个版本的原始输出和错误原因，结果由 Run Manifest 和内容哈希固定，不依赖演示者口头解释。</p>
+
+  <h2>版本治理</h2>
+  <p>Skill 从草稿、候选版到稳定版全程保留内容哈希、评测批次和版本卡。Candidate 必须通过样本量、同条件锁、准确率、完成率、稳定性、人工介入率、既有失败修复和新增硬失败八项门禁。注册后，用户仍只收到 Stable 正式答案；Candidate 在后台复制同一材料形成影子结果，经人工复核通过后才能晋升。异常时可一键回滚，历史评测和运行记录不被覆盖。</p>
+
+  <h2>业务价值</h2>
+  <p>该 MVP 不建设通用 Agent 平台，而是交付一条可验证的最小闭环：既形成可直接复用的企业事实核验能力，也沉淀评测集、报告、版本卡和发布记录，为后续 FireForge 全链路和启玄 App 的高质量能力供给提供资产。</p>
+
+  <div class="footer">提交资产：可运行 Agent/Skill、30 条评测集、评测报告、版本卡、影子/回滚说明及赛后 30 天计划。</div>
+</body>
+</html>
