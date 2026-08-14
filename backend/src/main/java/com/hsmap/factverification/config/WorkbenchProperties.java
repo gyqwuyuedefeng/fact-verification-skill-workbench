@@ -6,6 +6,7 @@ import jakarta.validation.constraints.NotNull;
 import java.net.URI;
 import java.nio.file.Path;
 import org.springframework.boot.context.properties.ConfigurationProperties;
+import org.springframework.boot.context.properties.bind.ConstructorBinding;
 import org.springframework.validation.annotation.Validated;
 
 /** 从环境变量映射工作台运行边界；凭据仍由 Spring datasource 管理，不进入该对象。 */
@@ -19,6 +20,14 @@ public record WorkbenchProperties(
         @NotNull Path skillSourceRoot,
         @NotNull @Valid Model model,
         @NotNull URI mcpEndpoint) {
+
+    /**
+     * 明确指定生产配置绑定必须使用包含快速评测清单的完整规范构造器。
+     *
+     * <p>该 record 还保留六参数测试兼容构造器；Spring Boot 4 遇到多个构造器时不会自行选择，若不显式固定会退回无参实例化并导致应用启动失败。
+     */
+    @ConstructorBinding
+    public WorkbenchProperties {}
 
     /**
      * 保留测试与内部构造器的旧签名；快速清单固定取正式清单同目录下的版本控制文件。
