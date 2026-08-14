@@ -14,10 +14,14 @@ import java.util.Collections;
 import java.util.LinkedHashMap;
 import java.util.List;
 import java.util.Map;
+import org.slf4j.Logger;
+import org.slf4j.LoggerFactory;
 import org.springframework.http.HttpHeaders;
 import org.springframework.stereotype.Component;
+import org.springframework.web.client.ResourceAccessException;
 import org.springframework.web.client.RestClient;
 import org.springframework.web.client.RestClientException;
+import org.springframework.web.client.RestClientResponseException;
 
 /**
  * 使用 Spring RestClient 向固定索引发送 `_search`。
@@ -27,16 +31,18 @@ import org.springframework.web.client.RestClientException;
 @Component
 public final class EsEvidenceQuery implements LiveEvidenceQuery {
 
-    private final RestClient restClient;
+    private static final Logger LOGGER = LoggerFactory.getLogger(EsEvidenceQuery.class);
+
+    private final List<RestClient> restClients;
 
     public EsEvidenceQuery(EnterpriseEvidenceProperties properties) {
-        this.restClient = buildClient(properties.elasticsearch());
+        this.restClients = buildClients(properties.elasticsearch());
     }
 
     /** 按工具绑定的索引顺序聚合命中并生成统一 envelope。 */
     @Override
     public Object query(EvidenceToolName toolName, Map<String, Object> arguments) {
-        if (restClient == null) {
+        if (restClients.isEmpty()) {
             throw new ServiceException("ES_NOT_CONFIGURED", "企业证据地址未配置");
         }
         OffsetDateTime observedAt = OffsetDateTime.now(ZoneOffset.UTC);
@@ -59,18 +65,57 @@ public final class EsEvidenceQuery implements LiveEvidenceQuery {
     private SearchPage search(
             EvidenceToolName toolName, IndexPolicy policy, Map<String, Object> arguments, OffsetDateTime observedAt) {
         Map<String, Object> body = queryBody(toolName, policy, arguments);
-        try {
-            @SuppressWarnings("unchecked")
-            Map<String, Object> response = restClient
-                    .post()
-                    .uri("/{index}/_search", policy.indexName())
-                    .body(body)
-                    .retrieve()
-                    .body(Map.class);
-            return toPage(response, policy, observedAt);
-        } catch (RestClientException exception) {
-            throw new ServiceException("ES_QUERY_FAILED", "企业证据查询暂不可用");
+        for (int index = 0; index < restClients.size(); index++) {
+            try {
+                @SuppressWarnings("unchecked")
+                Map<String, Object> response = restClients
+                        .get(index)
+                        .post()
+                        .uri("/{index}/_search", policy.indexName())
+                        .body(body)
+                        .retrieve()
+                        .body(Map.class);
+                return toPage(response, policy, observedAt);
+            } catch (ResourceAccessException exception) {
+                if (hasNextNode(index)) {
+                    logNodeFailure(index, "CONNECTION", "RETRY_NEXT");
+                    continue;
+                }
+                logNodeFailure(index, "CONNECTION", "FAIL");
+                throw queryFailed();
+            } catch (RestClientResponseException exception) {
+                if (exception.getStatusCode().is5xxServerError() && hasNextNode(index)) {
+                    logNodeFailure(index, "HTTP_5XX", "RETRY_NEXT");
+                    continue;
+                }
+                String category = exception.getStatusCode().is5xxServerError() ? "HTTP_5XX" : "HTTP_4XX";
+                logNodeFailure(index, category, "FAIL");
+                throw queryFailed();
+            } catch (RestClientException exception) {
+                logNodeFailure(index, "CLIENT", "FAIL");
+                throw queryFailed();
+            }
         }
+        throw queryFailed();
+    }
+
+    /**
+     * 只在当前配置后面仍有节点时重试，保持地址顺序可解释且不引入额外负载均衡状态。
+     */
+    private boolean hasNextNode(int index) {
+        return index + 1 < restClients.size();
+    }
+
+    /**
+     * 现场日志只暴露节点序号、错误类别与动作，禁止写入地址、响应体、底层异常或认证信息。
+     */
+    private static void logNodeFailure(int index, String category, String action) {
+        LOGGER.warn("企业证据 ES 节点调用失败：nodeOrdinal={}, category={}, action={}", index + 1, category, action);
+    }
+
+    /** 对所有底层客户端失败提供同一稳定业务边界，避免节点与凭据信息泄漏给 Agent。 */
+    private static ServiceException queryFailed() {
+        return new ServiceException("ES_QUERY_FAILED", "企业证据查询暂不可用");
     }
 
     private static Map<String, Object> queryBody(
@@ -111,8 +156,7 @@ public final class EsEvidenceQuery implements LiveEvidenceQuery {
             // 财务索引总量常高于工具固定的十条返回上限。十条足以覆盖当前比赛材料使用的2020年至今报告期，
             // 同时避免把整个企业历史无界塞进模型上下文。若不指定排序，不同 ES 分片可能在两次评测中返回
             // 不同年份，导致同一金标的证据覆盖随机变化；固定最新报告期优先，且不允许模型输入排序字段。
-            body.put("sort", List.of(Map.of(
-                    "report_year", Map.of("order", "desc", "missing", "_last"))));
+            body.put("sort", List.of(Map.of("report_year", Map.of("order", "desc", "missing", "_last"))));
         }
         return Map.copyOf(body);
     }
@@ -177,25 +221,33 @@ public final class EsEvidenceQuery implements LiveEvidenceQuery {
         return value == null || String.valueOf(value).isBlank() ? fallback : String.valueOf(value);
     }
 
-    private static RestClient buildClient(EnterpriseEvidenceProperties.Elasticsearch properties) {
-        if (properties.addresses() == null
-                || properties.addresses().isEmpty()
-                || properties.addresses().get(0) == null
-                || properties.addresses().get(0).isBlank()) {
-            return null;
+    /**
+     * 为每个非空地址构造独立客户端。凭据仍来自同一环境配置，节点列表只承担瞬时连接与 5xx 容错，
+     * 不会在认证失败时改试其他节点。
+     */
+    private static List<RestClient> buildClients(EnterpriseEvidenceProperties.Elasticsearch properties) {
+        if (properties.addresses() == null || properties.addresses().isEmpty()) {
+            return List.of();
         }
-        String address = properties.addresses().get(0).strip();
-        String baseUrl = address.startsWith("http://") || address.startsWith("https://")
-                ? address
-                : properties.scheme() + "://" + address;
-        RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl);
-        if (properties.username() != null && !properties.username().isBlank()) {
-            String token = Base64.getEncoder()
-                    .encodeToString(
-                            (properties.username() + ":" + properties.password()).getBytes(StandardCharsets.UTF_8));
-            builder.defaultHeader(HttpHeaders.AUTHORIZATION, "Basic " + token);
+        List<RestClient> clients = new ArrayList<>();
+        for (String configuredAddress : properties.addresses()) {
+            if (configuredAddress == null || configuredAddress.isBlank()) {
+                continue;
+            }
+            String address = configuredAddress.strip();
+            String baseUrl = address.startsWith("http://") || address.startsWith("https://")
+                    ? address
+                    : properties.scheme() + "://" + address;
+            RestClient.Builder builder = RestClient.builder().baseUrl(baseUrl);
+            if (properties.username() != null && !properties.username().isBlank()) {
+                String password = properties.password() == null ? "" : properties.password();
+                String token = Base64.getEncoder()
+                        .encodeToString((properties.username() + ":" + password).getBytes(StandardCharsets.UTF_8));
+                builder.defaultHeader(HttpHeaders.AUTHORIZATION, "Basic " + token);
+            }
+            clients.add(builder.build());
         }
-        return builder.build();
+        return List.copyOf(clients);
     }
 
     private record SearchPage(
