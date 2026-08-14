@@ -19,7 +19,10 @@ import java.util.Map;
  */
 public final class GoldDatasetLoader {
 
+    public static final String FORMAL_DATASET_VERSION = "public-tech-2024-v3";
+    public static final String LIVE_SMOKE_DATASET_VERSION = "public-tech-live-smoke-v1";
     public static final int MIN_GATE_SAMPLE_COUNT = 30;
+    public static final int LIVE_SMOKE_SAMPLE_COUNT = 3;
     private static final Map<String, String> EVIDENCE_TOOL_ARGUMENTS = Map.of(
             "resolve_company", "query",
             "get_company_profile", "companyId",
@@ -38,10 +41,22 @@ public final class GoldDatasetLoader {
 
     /** 装载并返回不可变、顺序固定的金标数据集。 */
     public GoldDataset load(Path manifestPath) {
+        return load(manifestPath, MIN_GATE_SAMPLE_COUNT);
+    }
+
+    /**
+     * 按调用方已锁定的最小样本数装载数据集。
+     *
+     * <p>正式门禁继续走单参数方法并固定要求三十条；只有现场快速评测会显式传入三，不能通过清单内容自行降低门槛。
+     */
+    public GoldDataset load(Path manifestPath, int minimumSampleCount) {
+        if (minimumSampleCount < 1) {
+            throw new ServiceException("DATASET_MINIMUM_INVALID", "数据集最小样本数必须为正数");
+        }
         try {
             Path normalizedManifest = manifestPath.toAbsolutePath().normalize();
             DatasetManifest manifest = objectMapper.readValue(normalizedManifest.toFile(), DatasetManifest.class);
-            validateManifest(manifest);
+            validateManifest(manifest, minimumSampleCount);
             Path baseDirectory = normalizedManifest.getParent();
             Path datasetPath = baseDirectory.resolve(manifest.datasetFile()).normalize();
             if (!datasetPath.startsWith(baseDirectory)) {
@@ -88,7 +103,7 @@ public final class GoldDatasetLoader {
         }
     }
 
-    private static void validateManifest(DatasetManifest manifest) {
+    private static void validateManifest(DatasetManifest manifest, int minimumSampleCount) {
         if (manifest == null
                 || blank(manifest.version())
                 || blank(manifest.datasetFile())
@@ -96,8 +111,8 @@ public final class GoldDatasetLoader {
                 || manifest.sampleIds() == null) {
             throw new ServiceException("DATASET_MANIFEST_INVALID", "数据集清单缺少必填字段");
         }
-        if (manifest.sampleCount() < MIN_GATE_SAMPLE_COUNT) {
-            throw new ServiceException("DATASET_TOO_SMALL", "门禁数据集至少 30 条金标主张");
+        if (manifest.sampleCount() < minimumSampleCount) {
+            throw new ServiceException("DATASET_TOO_SMALL", "评测数据集至少 " + minimumSampleCount + " 条金标主张");
         }
         if (manifest.sampleIds().stream().anyMatch(GoldDatasetLoader::blank)
                 || manifest.sampleIds().stream().distinct().count()
@@ -150,9 +165,9 @@ public final class GoldDatasetLoader {
         if (invalidEvidence) {
             throw new ServiceException("DATASET_EVIDENCE_INVALID", "金标样本人工证据字段不完整");
         }
-        boolean evidenceWithoutRequest = sample.manualEvidence().stream().anyMatch(evidence -> sample.evidenceRequests()
-                .stream()
-                .noneMatch(request -> request.toolName().equals(evidence.toolName())));
+        boolean evidenceWithoutRequest = sample.manualEvidence().stream()
+                .anyMatch(evidence -> sample.evidenceRequests().stream()
+                        .noneMatch(request -> request.toolName().equals(evidence.toolName())));
         if (evidenceWithoutRequest) {
             throw new ServiceException("DATASET_REQUEST_INCOMPLETE", "人工证据引用的工具必须出现在冻结请求中");
         }

@@ -48,6 +48,7 @@ workbench:
     verify-on-startup: true
   storage-root: ${WORKBENCH_STORAGE_ROOT:data}
   evaluation-manifest: ${EVALUATION_MANIFEST_PATH:evals/manifest.json}
+  quick-evaluation-manifest: ${QUICK_EVALUATION_MANIFEST_PATH:evals/live-smoke-manifest.json}
   skill-source-root: ${SKILL_SOURCE_ROOT:skills/company-material-fact-check}
   model:
     url: ${LOCAL_MODEL_URL:}

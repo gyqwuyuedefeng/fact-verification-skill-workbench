@@ -6,7 +6,6 @@ import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsmap.factverification.agent.AgentVariant;
 import com.hsmap.factverification.agent.FactVerificationAgentFactory;
 import com.hsmap.factverification.config.WorkbenchProperties;
-import com.hsmap.factverification.evidence.EvaluationEvidenceFreezer;
 import com.hsmap.factverification.evaluation.dataset.GoldDataset;
 import com.hsmap.factverification.evaluation.dataset.GoldDatasetLoader;
 import com.hsmap.factverification.evaluation.gate.CandidateGate;
@@ -18,6 +17,7 @@ import com.hsmap.factverification.evaluation.persistence.EvaluationRunRepository
 import com.hsmap.factverification.evaluation.report.EvaluationReport;
 import com.hsmap.factverification.evaluation.report.EvaluationReportGenerator;
 import com.hsmap.factverification.evaluation.scoring.CoreMetrics;
+import com.hsmap.factverification.evidence.EvaluationEvidenceFreezer;
 import com.hsmap.factverification.persistence.JdbcJson;
 import com.hsmap.factverification.shared.CanonicalJsonHasher;
 import com.hsmap.factverification.shared.ServiceException;
@@ -89,14 +89,15 @@ public final class EvaluationService implements EvaluationUseCase {
         this.hasher = hasher;
     }
 
-    /** 按幂等键创建不可变清单，随后异步执行 30 条对照。 */
+    /** 按幂等键创建不可变清单，随后异步执行固定的三条快速或三十条正式对照。 */
     @Override
     public EvaluationRunView create(String requestId, EvaluationCreateCommand command) {
         UUID existing = evaluations.findIdByRequestId(requestId).orElse(null);
         if (existing != null) {
             return get(existing);
         }
-        GoldDataset dataset = datasets.load(properties.evaluationManifest());
+        int minimumSampleCount = minimumSampleCount(command.datasetVersion());
+        GoldDataset dataset = loadDataset(command.datasetVersion());
         if (!dataset.version().equals(command.datasetVersion())) {
             throw new ServiceException("DATASET_VERSION_NOT_FOUND", "仅允许使用已冻结的比赛金标版本");
         }
@@ -120,7 +121,8 @@ public final class EvaluationService implements EvaluationUseCase {
                 OPERATOR,
                 now));
         Thread worker = new Thread(
-                () -> execute(evaluationId, snapshotId, dataset, manifest, variants), "evaluation-" + evaluationId);
+                () -> execute(evaluationId, snapshotId, dataset, manifest, variants, minimumSampleCount),
+                "evaluation-" + evaluationId);
         worker.setDaemon(true);
         worker.start();
         return EvaluationRunView.pending(
@@ -249,7 +251,8 @@ public final class EvaluationService implements EvaluationUseCase {
             UUID snapshotId,
             GoldDataset dataset,
             RunManifest manifest,
-            List<AgentVariant> variants) {
+            List<AgentVariant> variants,
+            int minimumSampleCount) {
         try {
             if (evaluations.markRunning(evaluationId) != 1) {
                 return;
@@ -257,7 +260,7 @@ public final class EvaluationService implements EvaluationUseCase {
             // 快照必须在任何 BASELINE/Skill 模型线程启动前完整冻结；否则并发首次查询可能各自命中变化中的 ES。
             evidenceFreezer.freeze(evaluationId, snapshotId, dataset);
             EvaluationResult result = runner.run(evaluationId, snapshotId, dataset, manifest, variants);
-            GateResult gate = gate(result, variants);
+            GateResult gate = gate(result, variants, minimumSampleCount);
             EvaluationReport report = reports.generate(evaluationId, result, gate);
             List<Map<String, String>> failures = failures(result, variants);
             evaluations.complete(new EvaluationRunRepository.CompletedEvaluation(
@@ -275,7 +278,7 @@ public final class EvaluationService implements EvaluationUseCase {
         }
     }
 
-    private GateResult gate(EvaluationResult result, List<AgentVariant> variants) {
+    private GateResult gate(EvaluationResult result, List<AgentVariant> variants, int minimumSampleCount) {
         String candidate = variants.get(variants.size() - 1).identifier();
         String stable = variants.get(variants.size() - 2).identifier();
         List<String> fixed = new ArrayList<>();
@@ -294,14 +297,40 @@ public final class EvaluationService implements EvaluationUseCase {
         CoreMetrics stableMetrics = result.metrics().get(stable);
         CoreMetrics candidateMetrics = result.metrics().get(candidate);
         return new CandidateGate()
-                .evaluate(new GateInput(
-                        result.manifest().sampleIds().size(),
-                        stableMetrics,
-                        candidateMetrics,
-                        List.of(),
-                        fixed,
-                        newFailures,
-                        true));
+                .evaluate(
+                        new GateInput(
+                                result.manifest().sampleIds().size(),
+                                stableMetrics,
+                                candidateMetrics,
+                                List.of(),
+                                fixed,
+                                newFailures,
+                                true),
+                        minimumSampleCount);
+    }
+
+    /**
+     * 请求只能命中两个版本控制中的固定清单，不接受前端传入路径或任意数据集版本。
+     */
+    private GoldDataset loadDataset(String datasetVersion) {
+        if (GoldDatasetLoader.FORMAL_DATASET_VERSION.equals(datasetVersion)) {
+            return datasets.load(properties.evaluationManifest());
+        }
+        if (GoldDatasetLoader.LIVE_SMOKE_DATASET_VERSION.equals(datasetVersion)) {
+            return datasets.load(properties.quickEvaluationManifest(), GoldDatasetLoader.LIVE_SMOKE_SAMPLE_COUNT);
+        }
+        throw new ServiceException("DATASET_VERSION_NOT_FOUND", "仅允许使用已冻结的比赛金标版本");
+    }
+
+    /** 返回数据集对应的固定门禁分母下限，未知版本在读取任何文件前失败关闭。 */
+    private static int minimumSampleCount(String datasetVersion) {
+        if (GoldDatasetLoader.FORMAL_DATASET_VERSION.equals(datasetVersion)) {
+            return GoldDatasetLoader.MIN_GATE_SAMPLE_COUNT;
+        }
+        if (GoldDatasetLoader.LIVE_SMOKE_DATASET_VERSION.equals(datasetVersion)) {
+            return GoldDatasetLoader.LIVE_SMOKE_SAMPLE_COUNT;
+        }
+        throw new ServiceException("DATASET_VERSION_NOT_FOUND", "仅允许使用已冻结的比赛金标版本");
     }
 
     private static List<Map<String, String>> failures(EvaluationResult result, List<AgentVariant> variants) {
@@ -317,8 +346,9 @@ public final class EvaluationService implements EvaluationUseCase {
     private RunManifest createManifest(GoldDataset dataset, UUID snapshotId) {
         Map<String, String> materialHashes = new LinkedHashMap<>();
         // Run Manifest 必须锁定模型实际看到的确定性材料投影，而不是只锁定内部金标使用的 LINE/Ln 简写。
-        dataset.samples().forEach(sample -> materialHashes.put(
-                sample.sampleId(), hasher.hash(AgentEvaluationExecutor.materialForModel(sample))));
+        dataset.samples()
+                .forEach(sample -> materialHashes.put(
+                        sample.sampleId(), hasher.hash(AgentEvaluationExecutor.materialForModel(sample))));
         WorkbenchProperties.Model model = properties.model();
         return manifests.create(
                 dataset,
@@ -378,9 +408,8 @@ public final class EvaluationService implements EvaluationUseCase {
         } catch (IllegalArgumentException exception) {
             throw invalidVariants(stableExists);
         }
-        SkillVersionRepository.FrozenVersion version = skillVersions
-                .findFrozen(id)
-                .orElseThrow(() -> invalidVariants(stableExists));
+        SkillVersionRepository.FrozenVersion version =
+                skillVersions.findFrozen(id).orElseThrow(() -> invalidVariants(stableExists));
         if (!expectedStatus.equals(version.status())) {
             throw invalidVariants(stableExists);
         }
@@ -390,9 +419,8 @@ public final class EvaluationService implements EvaluationUseCase {
 
     /** 返回不暴露版本 ID 的稳定合同错误；消息明确区分首次建版与已有 Stable 两种固定组成。 */
     private static ServiceException invalidVariants(boolean stableExists) {
-        String expected = stableExists
-                ? "已有 Stable 时评测必须且只能包含 BASELINE、当前 Stable、Candidate"
-                : "首次建版评测必须且只能包含 BASELINE、Candidate";
+        String expected =
+                stableExists ? "已有 Stable 时评测必须且只能包含 BASELINE、当前 Stable、Candidate" : "首次建版评测必须且只能包含 BASELINE、Candidate";
         return new ServiceException("EVALUATION_VARIANTS_INVALID", expected);
     }
 

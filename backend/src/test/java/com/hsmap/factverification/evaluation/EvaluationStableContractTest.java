@@ -7,12 +7,12 @@ import static org.mockito.Mockito.when;
 
 import com.fasterxml.jackson.databind.ObjectMapper;
 import com.hsmap.factverification.config.WorkbenchProperties;
-import com.hsmap.factverification.evidence.EvaluationEvidenceFreezer;
 import com.hsmap.factverification.evaluation.dataset.GoldDataset;
 import com.hsmap.factverification.evaluation.dataset.GoldDatasetLoader;
 import com.hsmap.factverification.evaluation.manifest.RunManifestFactory;
 import com.hsmap.factverification.evaluation.persistence.EvaluationRunRepository;
 import com.hsmap.factverification.evaluation.report.EvaluationReportGenerator;
+import com.hsmap.factverification.evidence.EvaluationEvidenceFreezer;
 import com.hsmap.factverification.persistence.JdbcJson;
 import com.hsmap.factverification.shared.CanonicalJsonHasher;
 import com.hsmap.factverification.shared.ServiceException;
@@ -64,8 +64,7 @@ class EvaluationStableContractTest {
         UUID candidateId = UUID.randomUUID();
         SkillVersionRepository versions = versions(stableId, candidateId, archivedId);
 
-        assertInvalidVariants(
-                versions, List.of("BASELINE", archivedId.toString(), candidateId.toString()));
+        assertInvalidVariants(versions, List.of("BASELINE", archivedId.toString(), candidateId.toString()));
     }
 
     /**
@@ -82,8 +81,7 @@ class EvaluationStableContractTest {
         SkillVersionRepository versions = versions(stableId, candidateId, extraId);
 
         assertInvalidVariants(
-                versions,
-                List.of("BASELINE", stableId.toString(), extraId.toString(), candidateId.toString()));
+                versions, List.of("BASELINE", stableId.toString(), extraId.toString(), candidateId.toString()));
     }
 
     /**
@@ -101,12 +99,59 @@ class EvaluationStableContractTest {
         assertInvalidVariants(versions, List.of("BASELINE", extraId.toString(), candidateId.toString()));
     }
 
+    /**
+     * 测试场景：首次建版从固定快速清单创建三条真实对照评测。
+     * 前置条件：系统没有 Stable、唯一 Candidate 已冻结，快速清单直接读取仓库内三个正式子集样本。
+     * 期望结果：落库投影记录 smoke 版本与三条样本，后台线程因仓储替身不接管任务而不调用模型。
+     * 断言重点：datasetVersion 只负责选择预配置清单，前端不能传入任意文件路径。
+     */
+    @Test
+    void createsEvaluationFromConfiguredThreeSampleSmokeManifest() {
+        UUID candidateId = UUID.randomUUID();
+        SkillVersionRepository versions = versions(null, candidateId, null);
+        EvaluationRunRepository evaluations = mock(EvaluationRunRepository.class);
+        when(evaluations.findIdByRequestId("smoke-evaluation-001")).thenReturn(Optional.empty());
+        ObjectMapper objectMapper = new ObjectMapper().findAndRegisterModules();
+        CanonicalJsonHasher hasher = new CanonicalJsonHasher(objectMapper);
+        WorkbenchProperties properties = new WorkbenchProperties(
+                new WorkbenchProperties.DatabaseBoundary("demo", "test", false),
+                Path.of("data"),
+                Path.of("../evals/manifest.json"),
+                Path.of("../evals/live-smoke-manifest.json"),
+                Path.of("skills/company-material-fact-check"),
+                new WorkbenchProperties.Model("http://model.example", "/v1/chat/completions", "model", "secret"),
+                URI.create("http://127.0.0.1:19091/mcp"));
+        EvaluationService service = new EvaluationService(
+                evaluations,
+                versions,
+                new GoldDatasetLoader(objectMapper, hasher),
+                new RunManifestFactory(hasher),
+                mock(EvaluationRunner.class),
+                mock(EvaluationEvidenceFreezer.class),
+                new EvaluationReportGenerator(objectMapper),
+                properties,
+                objectMapper,
+                new JdbcJson(objectMapper),
+                hasher);
+
+        EvaluationRunView view = service.create(
+                "smoke-evaluation-001",
+                new EvaluationCreateCommand("public-tech-live-smoke-v1", List.of("BASELINE", candidateId.toString())));
+
+        assertThat(view.datasetVersion()).isEqualTo("public-tech-live-smoke-v1");
+        assertThat(view.sampleCount()).isEqualTo(3);
+        org.mockito.Mockito.verify(evaluations)
+                .insertPending(org.mockito.ArgumentMatchers.argThat(
+                        evaluation -> "public-tech-live-smoke-v1".equals(evaluation.datasetVersion())
+                                && evaluation.sampleCount() == 3));
+    }
+
     /** 统一断言稳定错误码，避免每个场景重复构造不会触碰真实基础设施的应用服务。 */
     private static void assertInvalidVariants(SkillVersionRepository versions, List<String> variantIds) {
         assertThatThrownBy(() -> service(versions)
                         .create("evaluation-contract-001", new EvaluationCreateCommand(DATASET_VERSION, variantIds)))
-                .isInstanceOfSatisfying(ServiceException.class, exception ->
-                        assertThat(exception.getCode()).isEqualTo("EVALUATION_VARIANTS_INVALID"));
+                .isInstanceOfSatisfying(ServiceException.class, exception -> assertThat(exception.getCode())
+                        .isEqualTo("EVALUATION_VARIANTS_INVALID"));
     }
 
     /** 构造只完成创建前合同校验所需依赖的服务；后台仓储默认 markRunning=0，因此不会执行模型。 */

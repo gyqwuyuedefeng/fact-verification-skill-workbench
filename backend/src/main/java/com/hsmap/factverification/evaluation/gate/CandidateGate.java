@@ -12,8 +12,17 @@ public final class CandidateGate {
 
     /** 执行完整锁定、四项不退化、修复声明样本和无新增硬错误检查。 */
     public GateResult evaluate(GateInput input) {
+        return evaluate(input, 30);
+    }
+
+    /**
+     * 使用调用方固定的批次最小数量执行相同质量检查；现场快速评测仅把数量从三十调整为三，
+     * 准确率、完成率、稳定性、人工介入率、修复样本和硬错误规则完全不变。
+     */
+    public GateResult evaluate(GateInput input, int minimumSampleCount) {
         List<GateCheck> checks = new ArrayList<>();
-        checks.add(check("sample-count", input.sampleCount() >= 30, "门禁数据集不少于 30 条"));
+        checks.add(check(
+                "sample-count", input.sampleCount() >= minimumSampleCount, "本批次评测数据集不少于 " + minimumSampleCount + " 条"));
         checks.add(check("conditions-locked", input.conditionsLocked(), "同条件清单完整锁定"));
         checks.add(check(
                 "accuracy-non-regression",

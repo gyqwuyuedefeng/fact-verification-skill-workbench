@@ -107,6 +107,25 @@ class EvaluationCoreTest {
                 .isEqualTo("FAIL");
     }
 
+    /**
+     * 测试场景：三条现场快速评测需要生成真实 PASS/FAIL 结论，但不能伪装成正式三十条门禁。
+     * 前置条件：Stable 与 Candidate 的四项指标都基于同一三条数据，Candidate 修复一条且没有新增硬错误。
+     * 期望结果：显式最小数量三时门禁可 PASS，沿用正式默认三十时仍因 sample-count 检查 FAIL。
+     * 断言重点：快速与正式复用同一套质量检查，只放宽该批次自身的最小样本数量。
+     */
+    @Test
+    void evaluatesLiveSmokeWithExplicitThreeSampleMinimum() {
+        CoreMetrics stable =
+                new CoreMetrics(MetricValue.of(1, 3), MetricValue.of(3, 3), MetricValue.of(0, 1), MetricValue.of(1, 3));
+        CoreMetrics candidate =
+                new CoreMetrics(MetricValue.of(2, 3), MetricValue.of(3, 3), MetricValue.of(1, 1), MetricValue.of(0, 3));
+        GateInput input =
+                new GateInput(3, stable, candidate, List.of("iflytek-risk"), List.of("iflytek-risk"), List.of(), true);
+
+        assertThat(new CandidateGate().evaluate(input).status()).isEqualTo("FAIL");
+        assertThat(new CandidateGate().evaluate(input, 3).status()).isEqualTo("PASS");
+    }
+
     /** 只猜中主体和状态、但把材料金额归一化错了，不能计入准确率。 */
     @Test
     void rejectsIncorrectNormalizedClaimEvenWhenStatusMatches() throws Exception {

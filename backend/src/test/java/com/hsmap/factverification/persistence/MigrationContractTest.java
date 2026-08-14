@@ -129,7 +129,7 @@ class MigrationContractTest {
 
     /**
      * 测试场景：审核人按照 Quickstart 从工作台根目录启动后端。
-     * 前置条件：未显式覆盖三个本地文件路径，应用使用仓库内默认值。
+     * 前置条件：未显式覆盖四个本地文件路径，应用使用仓库内默认值。
      * 期望结果：默认路径直接指向工作台根目录下的 data、evals 和 skills，Boot 4 可以绑定为 Path。
      * 断言重点：禁止使用会被 Boot 4 资源路径规范化拒绝的父目录跳转 {@code ../}。
      */
@@ -140,6 +140,7 @@ class MigrationContractTest {
         assertThat(configuration)
                 .contains("storage-root: ${WORKBENCH_STORAGE_ROOT:data}")
                 .contains("evaluation-manifest: ${EVALUATION_MANIFEST_PATH:evals/manifest.json}")
+                .contains("quick-evaluation-manifest: ${QUICK_EVALUATION_MANIFEST_PATH:evals/live-smoke-manifest.json}")
                 .contains("skill-source-root: ${SKILL_SOURCE_ROOT:skills/company-material-fact-check}")
                 .doesNotContain(":../");
     }

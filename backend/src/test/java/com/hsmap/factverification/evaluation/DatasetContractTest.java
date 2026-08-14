@@ -77,6 +77,34 @@ class DatasetContractTest {
     }
 
     /**
+     * 测试场景：现场快速评测从正式三十条金标中抽取三个代表样本。
+     * 前置条件：快速清单固定为财务正确、否定性风险证据不足、期间金额冲突，最小样本数显式为三。
+     * 期望结果：快速集按清单顺序装载，三种结论均覆盖，且每条样本与正式集同标识记录逐字段完全相等。
+     * 断言重点：快速入口只能减少样本数量，不能改写材料、金标、证据请求或评分标准形成演示假数据。
+     */
+    @Test
+    void loadsThreeSampleLiveSmokeDatasetAsExactFormalSubset() {
+        GoldDataset formal = loader.load(Path.of("../evals/manifest.json"));
+        GoldDataset smoke = loader.load(Path.of("../evals/live-smoke-manifest.json"), 3);
+        Map<String, com.hsmap.factverification.evaluation.dataset.GoldSample> formalById =
+                formal.samples().stream().collect(Collectors.toMap(sample -> sample.sampleId(), sample -> sample));
+
+        assertThat(smoke.version()).isEqualTo("public-tech-live-smoke-v1");
+        assertThat(smoke.samples())
+                .extracting(sample -> sample.sampleId())
+                .containsExactly("iflytek-finance", "iflytek-risk", "yonyou-period-conflict");
+        assertThat(smoke.samples())
+                .extracting(sample -> sample.expectedStatus())
+                .containsExactly("VERIFIED", "INSUFFICIENT", "CONFLICT");
+        assertThat(smoke.samples())
+                .flatExtracting(sample -> sample.evidenceRequests())
+                .extracting(request -> request.toolName())
+                .contains("resolve_company", "get_company_financials", "get_company_risks");
+        assertThat(smoke.samples())
+                .allSatisfy(sample -> assertThat(sample).isEqualTo(formalById.get(sample.sampleId())));
+    }
+
+    /**
      * 测试场景：金标主体必须使用六工具返回的内部 companyId，不能误用股票代码。
      * 前置条件：五家评测企业已经通过真实 Streamable HTTP 主体工具完成唯一映射。
      * 期望结果：同一家企业的全部样本都使用本次真实工具复核得到的 32 位内部编码，且数据集升级为不可覆盖的 v3。
@@ -95,12 +123,13 @@ class DatasetContractTest {
                         }));
 
         assertThat(dataset.version()).isEqualTo("public-tech-2024-v3");
-        assertThat(actual).containsAllEntriesOf(Map.of(
-                "科大讯飞股份有限公司", "ef865a606f84bf2dd88486482840eab6",
-                "北京金山办公软件股份有限公司", "5533db99386bc889fc52566b68ad2172",
-                "深信服科技股份有限公司", "bd62524db001604e9a816abd1938434d",
-                "浪潮电子信息产业股份有限公司", "05e321fdd4e87be116c0919054176d78",
-                "用友网络科技股份有限公司", "d08a6dee3c5fd0859f97d393affa5c4a"));
+        assertThat(actual)
+                .containsAllEntriesOf(Map.of(
+                        "科大讯飞股份有限公司", "ef865a606f84bf2dd88486482840eab6",
+                        "北京金山办公软件股份有限公司", "5533db99386bc889fc52566b68ad2172",
+                        "深信服科技股份有限公司", "bd62524db001604e9a816abd1938434d",
+                        "浪潮电子信息产业股份有限公司", "05e321fdd4e87be116c0919054176d78",
+                        "用友网络科技股份有限公司", "d08a6dee3c5fd0859f97d393affa5c4a"));
     }
 
     /**
@@ -134,10 +163,9 @@ class DatasetContractTest {
             }
             assertThat(evidence.recordId()).isNotBlank();
         }));
-        assertThat(dataset.samples())
-                .allSatisfy(sample -> assertThat(sample.evidenceRequests())
-                        .extracting(request -> request.toolName())
-                        .contains("resolve_company", sample.manualEvidence().get(0).toolName()));
+        assertThat(dataset.samples()).allSatisfy(sample -> assertThat(sample.evidenceRequests())
+                .extracting(request -> request.toolName())
+                .contains("resolve_company", sample.manualEvidence().get(0).toolName()));
     }
 
     /**

@@ -1,5 +1,6 @@
 package com.hsmap.factverification.release;
 
+import com.hsmap.factverification.evaluation.dataset.GoldDatasetLoader;
 import com.hsmap.factverification.shared.ServiceException;
 import java.util.UUID;
 import org.springframework.stereotype.Service;
@@ -37,6 +38,10 @@ public class InitialStableBootstrapService {
         }
         BootstrapEvaluation evaluation = store.findEvaluation(evaluationId)
                 .orElseThrow(() -> new ServiceException("EVALUATION_NOT_FOUND", "初始发布评测不存在"));
+        if (!GoldDatasetLoader.FORMAL_DATASET_VERSION.equals(evaluation.datasetVersion())
+                || evaluation.sampleCount() != GoldDatasetLoader.MIN_GATE_SAMPLE_COUNT) {
+            throw new ServiceException("EVALUATION_NOT_RELEASE_ELIGIBLE", "只有正式 30 条评测可以用于版本发布");
+        }
         if (!"PASS".equals(evaluation.gateStatus())
                 || !evaluation.variantIdentifiers().contains("BASELINE")
                 || !evaluation.variantIdentifiers().contains(versionId.toString())) {

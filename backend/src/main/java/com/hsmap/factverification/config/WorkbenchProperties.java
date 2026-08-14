@@ -15,9 +15,31 @@ public record WorkbenchProperties(
         @NotNull @Valid DatabaseBoundary database,
         @NotNull Path storageRoot,
         @NotNull Path evaluationManifest,
+        @NotNull Path quickEvaluationManifest,
         @NotNull Path skillSourceRoot,
         @NotNull @Valid Model model,
         @NotNull URI mcpEndpoint) {
+
+    /**
+     * 保留测试与内部构造器的旧签名；快速清单固定取正式清单同目录下的版本控制文件。
+     * Spring 配置绑定仍使用包含 quickEvaluationManifest 的规范构造器。
+     */
+    public WorkbenchProperties(
+            DatabaseBoundary database,
+            Path storageRoot,
+            Path evaluationManifest,
+            Path skillSourceRoot,
+            Model model,
+            URI mcpEndpoint) {
+        this(
+                database,
+                storageRoot,
+                evaluationManifest,
+                evaluationManifest.resolveSibling("live-smoke-manifest.json"),
+                skillSourceRoot,
+                model,
+                mcpEndpoint);
+    }
 
     /** 只有批准的 database/schema 身份可以承载比赛数据。 */
     public record DatabaseBoundary(

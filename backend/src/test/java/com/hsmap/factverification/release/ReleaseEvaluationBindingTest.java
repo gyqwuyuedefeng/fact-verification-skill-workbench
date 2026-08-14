@@ -58,8 +58,12 @@ class ReleaseEvaluationBindingTest {
 
         when(versions.findVersion(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
         when(evaluations.findBootstrap(EVALUATION_ID))
-                .thenReturn(Optional.of(
-                        new BootstrapEvaluation(EVALUATION_ID, "PASS", Set.of("BASELINE", CANDIDATE_ID.toString()))));
+                .thenReturn(Optional.of(new BootstrapEvaluation(
+                        EVALUATION_ID,
+                        "public-tech-2024-v3",
+                        30,
+                        "PASS",
+                        Set.of("BASELINE", CANDIDATE_ID.toString()))));
         when(releases.findLatestForUpdate(InitialStableBootstrapService.SKILL_KEY))
                 .thenReturn(Optional.of(currentStable()));
         when(cards.build(candidate(), EVALUATION_ID)).thenReturn(Mockito.mock(VersionCardView.class));
@@ -74,6 +78,51 @@ class ReleaseEvaluationBindingTest {
         verify(versions, never()).registerCandidate(CANDIDATE_ID, EVALUATION_ID, "{}");
         verify(releases, never()).append(Mockito.any());
         verify(initialStable, never()).initialize(Mockito.any(), Mockito.any(), Mockito.any(), Mockito.any());
+    }
+
+    /**
+     * 测试场景：快速三条评测或数量被篡改的正式版本评测虽然显示 PASS，却被用于注册 Candidate。
+     * 前置条件：变体完整包含 BASELINE、当前 Stable 与 Candidate，隔离数据集发布资格这一项缺陷。
+     * 期望结果：两种记录都以 EVALUATION_NOT_RELEASE_ELIGIBLE 失败，并且不写版本卡或发布事件。
+     * 断言重点：页面标签不是安全边界，后端必须同时精确校验正式版本标识与三十条样本数。
+     */
+    @Test
+    void rejectsSmokeOrWrongSizedEvaluationEvenWhenGatePassed() {
+        Set<String> variants = Set.of("BASELINE", STABLE_ID.toString(), CANDIDATE_ID.toString());
+
+        assertNotReleaseEligible(
+                new BootstrapEvaluation(EVALUATION_ID, "public-tech-live-smoke-v1", 3, "PASS", variants));
+        assertNotReleaseEligible(new BootstrapEvaluation(EVALUATION_ID, "public-tech-2024-v3", 3, "PASS", variants));
+    }
+
+    /** 构造一次完整注册边界并证明不合格评测在任何版本状态写入前被拒绝。 */
+    private static void assertNotReleaseEligible(BootstrapEvaluation evaluation) {
+        ReleaseBindingRepository releases = Mockito.mock(ReleaseBindingRepository.class);
+        SkillVersionRepository versions = Mockito.mock(SkillVersionRepository.class);
+        EvaluationRunRepository evaluations = Mockito.mock(EvaluationRunRepository.class);
+        InitialStableBootstrapService initialStable = Mockito.mock(InitialStableBootstrapService.class);
+        VersionCardService cards = Mockito.mock(VersionCardService.class);
+        JdbcJson jdbcJson = Mockito.mock(JdbcJson.class);
+        ReleaseService service = new ReleaseService(
+                releases,
+                versions,
+                evaluations,
+                Mockito.mock(VerificationRunRepository.class),
+                initialStable,
+                cards,
+                jdbcJson);
+        when(versions.findVersion(CANDIDATE_ID)).thenReturn(Optional.of(candidate()));
+        when(evaluations.findBootstrap(EVALUATION_ID)).thenReturn(Optional.of(evaluation));
+        when(releases.findLatestForUpdate(InitialStableBootstrapService.SKILL_KEY))
+                .thenReturn(Optional.of(currentStable()));
+
+        assertThatThrownBy(() -> service.register(CANDIDATE_ID, EVALUATION_ID, "尝试使用非正式评测注册"))
+                .isInstanceOfSatisfying(ServiceException.class, exception -> org.assertj.core.api.Assertions.assertThat(
+                                exception.getCode())
+                        .isEqualTo("EVALUATION_NOT_RELEASE_ELIGIBLE"));
+        verify(versions, never()).registerCandidate(Mockito.any(), Mockito.any(), Mockito.any());
+        verify(cards, never()).build(Mockito.any(), Mockito.any());
+        verify(releases, never()).append(Mockito.any());
     }
 
     private static SkillVersionRepository.VersionRow candidate() {

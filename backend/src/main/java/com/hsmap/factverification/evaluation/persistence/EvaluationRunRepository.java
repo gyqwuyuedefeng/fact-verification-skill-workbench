@@ -21,16 +21,18 @@ public class EvaluationRunRepository {
         this.jdbcJson = jdbcJson;
     }
 
-    /** 初始发布门禁仅读取 PASS 状态和参与对照的变体标识。 */
+    /** 发布门禁读取数据集身份、样本数、PASS 状态和参与对照的变体标识。 */
     public Optional<BootstrapEvaluation> findBootstrap(UUID id) {
         return jdbcTemplate
                 .query(
                         """
-                        select id, gate_status, variants_json::text
+                        select id, dataset_version, sample_count, gate_status, variants_json::text
                           from test.evaluation_run where id = ?
                         """,
                         (rs, rowNum) -> new BootstrapEvaluation(
                                 rs.getObject("id", UUID.class),
+                                rs.getString("dataset_version"),
+                                rs.getInt("sample_count"),
                                 rs.getString("gate_status"),
                                 jdbcJson.readVariantIdentifiers(rs.getString("variants_json"))),
                         id)

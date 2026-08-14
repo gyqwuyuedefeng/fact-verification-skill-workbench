@@ -1,0 +1,11 @@
+{
+  "version": "public-tech-live-smoke-v1",
+  "datasetFile": "live-smoke-dataset.jsonl",
+  "sampleCount": 3,
+  "sampleIds": [
+    "iflytek-finance",
+    "iflytek-risk",
+    "yonyou-period-conflict"
+  ],
+  "license": "仅使用公司批准的 dev 同源企业事实 ES 只读记录及固定查询范围作内部比赛现场快速评测；样本逐字段复用正式金标，不分发原始索引全文。"
+}

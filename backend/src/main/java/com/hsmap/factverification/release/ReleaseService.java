@@ -1,5 +1,6 @@
 package com.hsmap.factverification.release;
 
+import com.hsmap.factverification.evaluation.dataset.GoldDatasetLoader;
 import com.hsmap.factverification.evaluation.persistence.EvaluationRunRepository;
 import com.hsmap.factverification.persistence.JdbcJson;
 import com.hsmap.factverification.release.persistence.ReleaseBindingRepository;
@@ -211,6 +212,7 @@ public class ReleaseService {
         BootstrapEvaluation evaluation = evaluations
                 .findBootstrap(evaluationId)
                 .orElseThrow(() -> new ServiceException("EVALUATION_NOT_FOUND", "注册评测不存在"));
+        requireFormalReleaseEvaluation(evaluation);
         if (!"PASS".equals(evaluation.gateStatus())
                 || !evaluation.variantIdentifiers().contains("BASELINE")
                 || !evaluation.variantIdentifiers().contains(candidateId.toString())) {
@@ -221,6 +223,14 @@ public class ReleaseService {
             throw new ServiceException("EVALUATION_STABLE_MISMATCH", "注册评测未包含当前 Stable");
         }
         return evaluation;
+    }
+
+    /** 快速评测只用于现场反馈；注册必须绑定精确的 v3 三十条正式批次。 */
+    private static void requireFormalReleaseEvaluation(BootstrapEvaluation evaluation) {
+        if (!GoldDatasetLoader.FORMAL_DATASET_VERSION.equals(evaluation.datasetVersion())
+                || evaluation.sampleCount() != GoldDatasetLoader.MIN_GATE_SAMPLE_COUNT) {
+            throw new ServiceException("EVALUATION_NOT_RELEASE_ELIGIBLE", "只有正式 30 条评测可以用于版本发布");
+        }
     }
 
     private ReleaseBindingRepository.ReleaseState lockCurrent() {

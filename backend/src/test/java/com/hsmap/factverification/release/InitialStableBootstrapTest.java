@@ -63,11 +63,34 @@ class InitialStableBootstrapTest {
                 .isInstanceOf(ServiceException.class);
     }
 
+    /**
+     * 测试场景：首次建版试图使用三条快速 PASS 或伪装成正式版本的三条 PASS。
+     * 前置条件：Candidate 已冻结、变体包含 BASELINE，隔离评测数据集资格缺陷。
+     * 期望结果：两种记录都以 EVALUATION_NOT_RELEASE_ELIGIBLE 拒绝，初始发布事件不追加。
+     * 断言重点：首版没有 Stable 也不能绕过正式三十条发布门禁。
+     */
+    @Test
+    void rejectsNonFormalEvaluationForInitialStable() {
+        store.datasetVersion = "public-tech-live-smoke-v1";
+        store.sampleCount = 3;
+        assertThatThrownBy(() -> service.initialize(VERSION_ID, EVALUATION_ID, "快速评测不能发布", "reviewer"))
+                .isInstanceOfSatisfying(ServiceException.class, exception -> assertThat(exception.getCode())
+                        .isEqualTo("EVALUATION_NOT_RELEASE_ELIGIBLE"));
+
+        store.datasetVersion = "public-tech-2024-v3";
+        assertThatThrownBy(() -> service.initialize(VERSION_ID, EVALUATION_ID, "错误数量不能发布", "reviewer"))
+                .isInstanceOfSatisfying(ServiceException.class, exception -> assertThat(exception.getCode())
+                        .isEqualTo("EVALUATION_NOT_RELEASE_ELIGIBLE"));
+        assertThat(store.appended).isFalse();
+    }
+
     /** 测试替身只记录一次追加事件，不模拟范围外的通用工作流。 */
     private static final class FakeBootstrapStore implements InitialStableBootstrapStore {
         private boolean hasCurrentRelease;
         private boolean appended;
         private String candidateStatus = "CANDIDATE";
+        private String datasetVersion = "public-tech-2024-v3";
+        private int sampleCount = 30;
         private String gateStatus = "PASS";
         private Set<String> variantIdentifiers = Set.of("BASELINE", VERSION_ID.toString());
 
@@ -78,7 +101,8 @@ class InitialStableBootstrapTest {
 
         @Override
         public Optional<BootstrapEvaluation> findEvaluation(UUID evaluationId) {
-            return Optional.of(new BootstrapEvaluation(evaluationId, gateStatus, variantIdentifiers));
+            return Optional.of(
+                    new BootstrapEvaluation(evaluationId, datasetVersion, sampleCount, gateStatus, variantIdentifiers));
         }
 
         @Override
