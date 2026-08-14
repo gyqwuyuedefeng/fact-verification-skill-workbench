@@ -24,12 +24,14 @@ function evaluation(
   status: EvaluationRun['status'],
   gateStatus: EvaluationRun['gateStatus'],
   variantIds: string[],
+  datasetVersion = 'public-tech-2024-v3',
+  sampleCount = 30,
 ): EvaluationRun {
   return {
     id,
-    datasetVersion: 'public-tech-2024-v3',
+    datasetVersion,
     datasetHash: null,
-    sampleCount: 10,
+    sampleCount,
     variants: variantIds.map((identifier) => ({ type: identifier === 'BASELINE' ? 'BASELINE' : 'SKILL', identifier, contentHash: 'a'.repeat(64) })),
     runManifest: null,
     metrics: null,
@@ -123,6 +125,8 @@ describe('ReleaseWorkflow', () => {
       evaluation('extra-variant', 'COMPLETED', 'PASS', ['BASELINE', 'stable-1', 'extra', 'candidate-1']),
       evaluation('fail-related', 'COMPLETED', 'FAIL', ['BASELINE', 'stable-1', 'candidate-1']),
       evaluation('pass-unrelated', 'COMPLETED', 'PASS', ['BASELINE', 'stable-1', 'candidate-2']),
+      evaluation('smoke-pass', 'COMPLETED', 'PASS', ['BASELINE', 'stable-1', 'candidate-1'], 'public-tech-live-smoke-v1', 3),
+      evaluation('wrong-count-pass', 'COMPLETED', 'PASS', ['BASELINE', 'stable-1', 'candidate-1'], 'public-tech-2024-v3', 3),
     ]
 
     const wrapper = mount(ReleasePage, { global: { plugins: [pinia] } })
@@ -143,6 +147,8 @@ describe('ReleaseWorkflow', () => {
     expect(evaluationSelect.text()).not.toContain('extra-variant')
     expect(evaluationSelect.text()).not.toContain('fail-related')
     expect(evaluationSelect.text()).not.toContain('pass-unrelated')
+    expect(evaluationSelect.text()).not.toContain('smoke-pass')
+    expect(evaluationSelect.text()).not.toContain('wrong-count-pass')
 
     await evaluationSelect.setValue('pass-related')
     await candidateSelect.setValue('candidate-2')

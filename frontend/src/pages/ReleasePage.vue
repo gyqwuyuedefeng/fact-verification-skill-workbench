@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref, watch } from 'vue'
 
-import { releaseActionLabel, skillVersionLabel, statusLabel } from '../presentation/labels'
+import { evaluationDatasetLabel, releaseActionLabel, skillVersionLabel, statusLabel } from '../presentation/labels'
 import { useEvaluationStore } from '../stores/evaluation'
 import { useReleaseStore } from '../stores/release'
 import { useSkillStore } from '../stores/skill'
@@ -28,6 +28,8 @@ const stableVersions = computed(() => skillStore.versions.filter((version) => ve
 const eligibleEvaluations = computed(() => evaluationStore.history.filter((run) =>
   run.status === 'COMPLETED' &&
   run.gateStatus === 'PASS' &&
+  run.datasetVersion === 'public-tech-2024-v3' &&
+  run.sampleCount === 30 &&
   hasExactReleaseVariants(run.variants?.map((variant) => variant.identifier) ?? []),
 ))
 
@@ -98,7 +100,7 @@ function formatTime(value: string) {
         <label class="field-label" for="release-evaluation-run">已通过门禁的评测</label>
         <select id="release-evaluation-run" v-model="evaluationRunId" class="text-input" data-test="release-evaluation-run" :disabled="!candidateVersionId">
           <option value="">请选择评测</option>
-          <option v-for="run in eligibleEvaluations" :key="run.id" :value="run.id">{{ run.id }} · {{ statusLabel(run.status) }} · 门禁通过（PASS）</option>
+          <option v-for="run in eligibleEvaluations" :key="run.id" :value="run.id">{{ run.id }} · {{ evaluationDatasetLabel(run.datasetVersion) }} · {{ statusLabel(run.status) }} · 门禁通过（PASS）</option>
         </select>
         <label class="field-label">操作原因</label><input v-model="reason" class="text-input" maxlength="1000" />
         <div class="editor-actions release-actions">

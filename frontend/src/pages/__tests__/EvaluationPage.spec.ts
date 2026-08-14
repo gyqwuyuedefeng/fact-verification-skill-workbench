@@ -174,6 +174,7 @@ describe('EvaluationPage', () => {
 
     expect((wrapper.get('[data-test="stable-version"]').element as HTMLSelectElement).value).toBe('stable-v1')
     expect(wrapper.get('[data-test="stable-version"]').text()).not.toContain('首次建立')
+    await wrapper.get('[data-test="dataset-version"]').setValue('public-tech-2024-v3')
     await wrapper.find('[data-test="candidate-version"]').setValue('candidate-v2')
     await wrapper.find('[data-test="start-evaluation"]').trigger('click')
     await flushPromises()
@@ -199,7 +200,23 @@ describe('EvaluationPage', () => {
     await wrapper.find('[data-test="candidate-version"]').setValue('candidate-v1')
     await wrapper.find('[data-test="start-evaluation"]').trigger('click')
 
-    expect(start).toHaveBeenCalledWith('public-tech-2024-v3', ['BASELINE', 'candidate-v1'])
+    expect(start).toHaveBeenCalledWith('public-tech-live-smoke-v1', ['BASELINE', 'candidate-v1'])
+  })
+
+  it('默认选择三条现场快速评测，并清楚区分三十条正式发布门禁', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia] } })
+    const dataset = wrapper.get<HTMLSelectElement>('[data-test="dataset-version"]')
+
+    expect(dataset.element.tagName).toBe('SELECT')
+    expect(dataset.element.value).toBe('public-tech-live-smoke-v1')
+    expect(dataset.text()).toContain('现场快速评测（3 条）')
+    expect(dataset.text()).toContain('正式完整评测（30 条）')
+    expect(wrapper.get('[data-test="dataset-release-hint"]').text()).toContain('不可用于注册或发布')
+
+    await dataset.setValue('public-tech-2024-v3')
+    expect(wrapper.get('[data-test="dataset-release-hint"]').text()).toContain('可作为发布门禁')
   })
 
   it('管理页提供评测批次、按版本汇总和版本对比三个历史视图', async () => {
@@ -214,7 +231,29 @@ describe('EvaluationPage', () => {
     expect(wrapper.find('[data-test="evaluation-tab-runs"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="evaluation-tab-version"]').exists()).toBe(true)
     expect(wrapper.find('[data-test="evaluation-tab-compare"]').exists()).toBe(true)
-    expect(wrapper.text()).toContain('历史评测')
+    expect(wrapper.text()).toContain('查看历史结果')
+    expect(wrapper.text()).toContain('发起新评测')
+  })
+
+  it('查看历史结果只执行读取，不改变新建表单的数据集也不提交新评测', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useEvaluationStore()
+    store.history = [run('historical-evaluation', 'COMPLETED')]
+    vi.spyOn(store, 'loadHistory').mockResolvedValue()
+    const refresh = vi.spyOn(store, 'refreshEvaluation').mockResolvedValue()
+    const start = vi.spyOn(store, 'start').mockResolvedValue()
+    const wrapper = mount(EvaluationPage, { global: { plugins: [pinia] } })
+
+    expect(wrapper.get<HTMLSelectElement>('[data-test="dataset-version"]').element.value)
+      .toBe('public-tech-live-smoke-v1')
+    await wrapper.get('.history-row').trigger('click')
+    await flushPromises()
+
+    expect(refresh).toHaveBeenCalledWith('historical-evaluation')
+    expect(start).not.toHaveBeenCalled()
+    expect(wrapper.get<HTMLSelectElement>('[data-test="dataset-version"]').element.value)
+      .toBe('public-tech-live-smoke-v1')
   })
 
   it('辅助数据仍在加载时立即按 URL 刷新评测', async () => {

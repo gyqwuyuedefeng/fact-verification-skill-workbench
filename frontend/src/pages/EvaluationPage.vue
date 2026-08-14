@@ -3,7 +3,15 @@ import { computed, inject, onMounted, onUnmounted, ref, watch } from 'vue'
 import { routeLocationKey, routerKey } from 'vue-router'
 
 import { reportUrl } from '../api/evaluation'
-import { metricLabel, shortId, skillVersionLabel, statusLabel, variantLabel } from '../presentation/labels'
+import {
+  evaluationDatasetLabel,
+  evaluationDatasetReleaseHint,
+  metricLabel,
+  shortId,
+  skillVersionLabel,
+  statusLabel,
+  variantLabel,
+} from '../presentation/labels'
 import { useEvaluationStore } from '../stores/evaluation'
 import { useSkillStore } from '../stores/skill'
 import type { CoreMetrics, EvaluationSample, MetricValue } from '../types/evaluation'
@@ -13,7 +21,7 @@ const skillStore = useSkillStore()
 const route = inject(routeLocationKey, null)
 const router = inject(routerKey, null)
 const activeTab = ref<'runs' | 'version' | 'compare'>('runs')
-const datasetVersion = ref('public-tech-2024-v3')
+const datasetVersion = ref('public-tech-live-smoke-v1')
 const stableVersionId = ref('')
 const candidateVersionId = ref('')
 const summaryVersionId = ref('')
@@ -177,10 +185,10 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
     <template v-if="activeTab === 'runs'">
       <div class="admin-evaluation-grid">
         <aside class="panel history-panel">
-          <div class="panel-heading"><span class="step-index">H</span><div><strong>历史评测</strong><small>不可覆盖 · 新到旧</small></div></div>
+          <div class="panel-heading"><span class="step-index">H</span><div><strong>查看历史结果</strong><small>只读查看 · 不会重新提交 · 新到旧</small></div></div>
           <button v-for="item in store.history" :key="item.id" class="history-row" :class="{ active: item.id === store.evaluation?.id }" @click="selectEvaluation(item.id)">
             <span :class="['gate-dot', item.gateStatus.toLowerCase()]"></span>
-            <div><strong>{{ formatTime(item.createdAt) }}</strong><small>{{ item.datasetVersion }} · {{ item.sampleCount }} 条 · {{ item.variants?.length ?? 0 }} 变体</small></div>
+            <div><strong>{{ formatTime(item.createdAt) }}</strong><small>{{ evaluationDatasetLabel(item.datasetVersion) }} · {{ item.sampleCount }} 条 · {{ item.variants?.length ?? 0 }} 变体</small></div>
             <code>{{ shortId(item.id) }}</code>
           </button>
           <div v-if="!store.history.length" class="compact-empty">暂无历史；可先在右侧创建评测。</div>
@@ -189,9 +197,13 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
         <div class="evaluation-main">
           <div class="evaluation-layout">
             <section class="panel evaluation-launcher">
-              <div class="panel-heading"><span class="step-index">01</span><div><strong>新建同条件评测</strong><small>唯一变化：基线指令或冻结 Skill</small></div></div>
+              <div class="panel-heading"><span class="step-index">01</span><div><strong>发起新评测</strong><small>唯一变化：基线指令或冻结 Skill</small></div></div>
               <label class="field-label" for="dataset-version">金标数据集</label>
-              <input id="dataset-version" v-model="datasetVersion" class="text-input" readonly />
+              <select id="dataset-version" v-model="datasetVersion" data-test="dataset-version" class="text-input">
+                <option value="public-tech-live-smoke-v1">{{ evaluationDatasetLabel('public-tech-live-smoke-v1') }}</option>
+                <option value="public-tech-2024-v3">{{ evaluationDatasetLabel('public-tech-2024-v3') }}</option>
+              </select>
+              <p class="dataset-release-hint" data-test="dataset-release-hint">{{ evaluationDatasetReleaseHint(datasetVersion) }}</p>
               <label class="field-label" for="stable-version">稳定版（STABLE）版本</label>
               <select id="stable-version" v-model="stableVersionId" data-test="stable-version" class="text-input" :disabled="stableVersions.length <= 1">
                 <option v-if="stableVersions.length === 0" value="">尚无正式版（首次建版）</option>
@@ -288,6 +300,13 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
   align-items: center;
   gap: 12px;
   margin-top: 18px;
+}
+
+.dataset-release-hint {
+  margin: -2px 0 14px;
+  color: #8fa5bc;
+  font-size: 12px;
+  line-height: 1.6;
 }
 
 .evaluation-running-card div {
