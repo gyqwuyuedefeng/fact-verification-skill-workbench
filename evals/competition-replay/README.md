@@ -44,7 +44,7 @@ bash evals/competition-replay/run-quick-browser-tests.sh
 bash evals/competition-replay/run-full-competition-browser-tests.sh
 ```
 
-当前运行环境没有暴露 Playwright MCP 工具，因此仓库脚本使用同版本 Playwright Browser API 驱动真实 Chromium；选择器、网络响应、截图和失败行为与 MCP 浏览器执行一致，所有脚本都保存在本目录供复跑。
+本轮从零演示已经使用 Playwright MCP 逐页执行真实点击、上传、确认、取消、刷新和下载，并把页面快照保存在工作区 `.playwright-mcp/`。仓库同时保留同版本 Playwright Browser API 脚本，用于无人值守重复回归；两者使用相同页面选择器、网络响应和失败条件。
 
 ## 最短演示顺序
 
@@ -86,7 +86,7 @@ bash evals/competition-replay/run-full-competition-browser-tests.sh
 - 核心指标是准确率、任务完成率、稳定性、人工介入率；版本之间的结果要看总体指标，也要下钻失败样本。
 - 快速 3 条与正式 30 条使用同一执行和评分代码；快速集只缩短现场等待，不具有发布资格，正式集才是比赛门禁证据。
 
-`v3` 的支持性金标只引用当前六个 MCP 工具可返回的 dev 同源 ES `recordId`；`v2` 虽已纠正股票代码，仍引用了运行时工具不可见的年报记录，已归档而不用于正式分数。
+正式 `v4` 金标只引用当前六个 MCP 工具可返回的 dev 同源 ES `recordId`；`v3` 及更早版本保留为证据漂移和缺陷修复历史，不再允许新建评测或用于发布分数。
 
 ## 文件说明
 

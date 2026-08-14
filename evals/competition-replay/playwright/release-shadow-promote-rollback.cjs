@@ -15,6 +15,8 @@ const {
 const projectRoot = path.resolve(__dirname, '..', '..', '..')
 const statePath = path.join(ensureEvidenceRoot(), 'full-demo-state.json')
 const reportsRoot = path.resolve(__dirname, '..', '..', 'reports')
+const currentFinalHistoryActions = ['ROLLBACK', 'ROLLBACK', 'PROMOTE', 'SHADOW_START', 'REGISTER', 'INITIALIZE']
+const fullFinalHistoryActions = ['ROLLBACK', 'ROLLBACK', 'PROMOTE', 'SHADOW_START', 'SHADOW_STOP', 'SHADOW_START', 'REGISTER', 'INITIALIZE']
 
 const shadowCases = [
   {
@@ -108,18 +110,45 @@ async function main() {
     assert.equal(currentBeforeResponse.status(), 200)
     const currentBefore = await currentBeforeResponse.json()
     if (currentBefore.action === 'ROLLBACK'
-      && currentBefore.stableVersionId === oldStableId
-      && currentBefore.previousStableVersionId === candidateId) {
+      && currentBefore.stableVersionId === candidateId
+      && currentBefore.previousStableVersionId === oldStableId) {
       const history = await (await context.request.get(`${baseUrl}/api/releases/history`)).json()
-      assert.deepEqual(
-        history.slice(0, 7).map((item) => item.action),
-        ['ROLLBACK', 'PROMOTE', 'SHADOW_START', 'SHADOW_STOP', 'SHADOW_START', 'REGISTER', 'INITIALIZE'],
+      const actions = history.map((item) => item.action)
+      assert.equal(
+        [currentFinalHistoryActions, fullFinalHistoryActions]
+          .some((expected) => expected.length === actions.length
+            && expected.every((action, index) => action === actions[index])),
+        true,
+        `最终发布历史不符合六步现场链路或八步完整复演链路：${JSON.stringify(actions)}`,
       )
       assert(state.releaseEvidence, '回滚状态必须关联已经导出的发布证据')
-      await page.getByText('ROLLBACK', { exact: true }).first().waitFor({ state: 'visible' })
+      await page.getByText(/回滚上一版（ROLLBACK）/).first().waitFor({ state: 'visible' })
       await saveScreenshot(page, 'full-demo-release-rollback-final.png')
       assertNoDiagnostics(diagnostics, '已完成发布链路的最终状态复核')
-      console.log('PASS: 已完成发布链路的最终 Stable、回滚目标、七步追加历史和导出证据均一致。')
+      console.log('PASS: 已完成发布链路最终恢复优化 Stable，追加历史和导出证据均一致。')
+      return
+    }
+    if (currentBefore.action === 'ROLLBACK'
+      && currentBefore.stableVersionId === oldStableId
+      && currentBefore.previousStableVersionId === candidateId) {
+      await page.locator('input.text-input').nth(2).fill('现场演示完成：恢复评测最优版本为正式稳定版')
+      const restored = await releaseAction(page, '回滚上一版', '/api/releases/rollback')
+      assert.equal(restored.stableVersionId, candidateId)
+      assert.equal(restored.previousStableVersionId, oldStableId)
+      const history = await (await context.request.get(`${baseUrl}/api/releases/history`)).json()
+      const evidence = {
+        ...state.releaseEvidence,
+        generatedAt: new Date().toISOString(),
+        current: restored,
+        history,
+      }
+      fs.writeFileSync(path.join(reportsRoot, 'release-evidence.json'), `${JSON.stringify(evidence, null, 2)}\n`)
+      state.releaseEvidence = evidence
+      fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`)
+      await page.getByText(/回滚上一版（ROLLBACK）/).first().waitFor({ state: 'visible' })
+      await saveScreenshot(page, 'full-demo-release-rollback-final.png')
+      assertNoDiagnostics(diagnostics, '旧版终点恢复为评测最优 Stable')
+      console.log('PASS: 旧版终点已恢复为评测最优 Stable。')
       return
     }
     const registered = currentBefore.candidateVersionId === candidateId
@@ -243,6 +272,13 @@ async function main() {
       candidateId,
     )
 
+    await gotoRoute(page, '/admin/releases')
+    await page.locator('input.text-input').nth(2).fill('现场演示完成：恢复评测最优版本为正式稳定版')
+    const restoredOptimal = await releaseAction(page, '回滚上一版', '/api/releases/rollback')
+    assert.equal(restoredOptimal.action, 'ROLLBACK')
+    assert.equal(restoredOptimal.stableVersionId, candidateId)
+    assert.equal(restoredOptimal.previousStableVersionId, oldStableId)
+
     const [currentResponse, historyResponse] = await Promise.all([
       context.request.get(`${baseUrl}/api/releases/current`),
       context.request.get(`${baseUrl}/api/releases/history`),
@@ -252,9 +288,11 @@ async function main() {
     const current = await currentResponse.json()
     const history = await historyResponse.json()
     assert.equal(current.action, 'ROLLBACK')
+    assert.equal(current.stableVersionId, candidateId)
+    assert.equal(current.previousStableVersionId, oldStableId)
     assert.deepEqual(
-      history.slice(0, 7).map((item) => item.action),
-      ['ROLLBACK', 'PROMOTE', 'SHADOW_START', 'SHADOW_STOP', 'SHADOW_START', 'REGISTER', 'INITIALIZE'],
+      history.slice(0, 8).map((item) => item.action),
+      fullFinalHistoryActions,
     )
 
     const evidence = {
@@ -280,7 +318,7 @@ async function main() {
     fs.writeFileSync(statePath, `${JSON.stringify(state, null, 2)}\n`)
 
     await gotoRoute(page, '/admin/releases')
-    await page.getByText('ROLLBACK', { exact: true }).first().waitFor({ state: 'visible' })
+    await page.getByText(/回滚上一版（ROLLBACK）/).first().waitFor({ state: 'visible' })
     await saveScreenshot(page, 'full-demo-release-rollback-final.png')
     assertNoDiagnostics(diagnostics, '注册、门禁拒绝、影子启停、PASS/FAIL、晋升、新任务和回滚')
     console.log('PASS: Candidate 注册、影子启停、人工 PASS/FAIL、晋升、新 Stable 生效和回滚全链路正常。')
