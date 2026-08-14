@@ -84,6 +84,12 @@ public final class EsEvidenceQuery implements LiveEvidenceQuery {
                 logNodeFailure(index, "CONNECTION", "FAIL");
                 throw queryFailed();
             } catch (RestClientResponseException exception) {
+                if (isMissingApprovedIndex(exception)) {
+                    LOGGER.info(
+                            "企业证据固定索引当前未部署：nodeOrdinal={}, category=INDEX_MISSING, action=EMPTY_EVIDENCE",
+                            index + 1);
+                    return new SearchPage(List.of(), List.of(), 0);
+                }
                 if (exception.getStatusCode().is5xxServerError() && hasNextNode(index)) {
                     logNodeFailure(index, "HTTP_5XX", "RETRY_NEXT");
                     continue;
@@ -97,6 +103,19 @@ public final class EsEvidenceQuery implements LiveEvidenceQuery {
             }
         }
         throw queryFailed();
+    }
+
+    /**
+     * 仅识别 Elasticsearch 明确返回的缺索引错误；代理路径错误、认证失败和其他 404 仍按查询失败处理。
+     *
+     * <p>固定白名单索引未部署代表当前数据源不能提供该类证据，上层必须据此给出证据不足或人工介入，不能把它解释为事实不存在。
+     */
+    private static boolean isMissingApprovedIndex(RestClientResponseException exception) {
+        if (exception.getStatusCode().value() != 404) {
+            return false;
+        }
+        String responseBody = exception.getResponseBodyAsString();
+        return responseBody != null && responseBody.contains("index_not_found_exception");
     }
 
     /**

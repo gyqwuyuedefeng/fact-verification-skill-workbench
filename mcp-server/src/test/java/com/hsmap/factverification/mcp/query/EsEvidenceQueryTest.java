@@ -142,6 +142,54 @@ class EsEvidenceQueryTest {
     }
 
     /**
+     * 测试场景：公司测试 ES 没有部署某个固定白名单风险索引。
+     * 前置条件：四个风险索引都明确返回 Elasticsearch 的 index_not_found_exception。
+     * 期望结果：工具返回 0 条证据并继续完成聚合，使上层把否定性主张判为证据不足，而不是让整批评测失败。
+     * 断言重点：四个批准索引各查询一次；缺索引只代表当前数据源没有该类证据，绝不能被解释成风险事实已核实。
+     */
+    @Test
+    void treatsMissingApprovedIndicesAsEmptyEvidence() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        HttpServer server = startMissingIndexStub(calls, true);
+        try {
+            EsEvidenceQuery query = new EsEvidenceQuery(propertiesFor(server));
+
+            EsEvidenceEnvelope result = (EsEvidenceEnvelope)
+                    query.query(EvidenceToolName.GET_COMPANY_RISKS, Map.of("companyId", "company-1"));
+
+            assertThat(result.total()).isZero();
+            assertThat(result.items()).isEmpty();
+            assertThat(result.evidence()).isEmpty();
+            assertThat(calls).hasValue(4);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
+     * 测试场景：固定索引请求返回普通 404，但响应没有 Elasticsearch 缺索引错误类型。
+     * 前置条件：HTTP 替身返回相同状态码和通用错误体，模拟代理路径错误等不可降级问题。
+     * 期望结果：立即返回稳定业务错误，不能把任意 404 当成空证据。
+     * 断言重点：只有精确 index_not_found_exception 可以降级，防止配置或代理错误被静默吞掉。
+     */
+    @Test
+    void rejectsGenericNotFoundResponse() throws Exception {
+        AtomicInteger calls = new AtomicInteger();
+        HttpServer server = startMissingIndexStub(calls, false);
+        try {
+            EsEvidenceQuery query = new EsEvidenceQuery(propertiesFor(server));
+
+            assertThatThrownBy(() ->
+                            query.query(EvidenceToolName.GET_COMPANY_RISKS, Map.of("companyId", "company-1")))
+                    .isInstanceOf(ServiceException.class)
+                    .hasMessage("ES_QUERY_FAILED: 企业证据查询暂不可用");
+            assertThat(calls).hasValue(1);
+        } finally {
+            server.stop(0);
+        }
+    }
+
+    /**
      * 测试场景：配置中的全部 ES 节点都发生连接失败。
      * 前置条件：使用两个刚释放且没有监听者的本地端口，确保 HTTP 连接无法建立。
      * 期望结果：依次尝试完可恢复节点后，对外只暴露稳定的 ES_QUERY_FAILED 业务错误。
@@ -218,6 +266,24 @@ class EsEvidenceQueryTest {
                     : "{\"error\":\"stub failure\"}".getBytes(StandardCharsets.UTF_8);
             exchange.getResponseHeaders().set("Content-Type", "application/json");
             exchange.sendResponseHeaders(status, response.length);
+            exchange.getResponseBody().write(response);
+            exchange.close();
+        });
+        server.start();
+        return server;
+    }
+
+    /** 为全部固定索引返回精确缺索引或普通 404，用于锁定环境缺数据与请求错误的不同处理。 */
+    private static HttpServer startMissingIndexStub(AtomicInteger calls, boolean indexMissing) throws IOException {
+        HttpServer server = HttpServer.create(new InetSocketAddress("127.0.0.1", 0), 0);
+        server.createContext("/", exchange -> {
+            calls.incrementAndGet();
+            String body = indexMissing
+                    ? "{\"error\":{\"type\":\"index_not_found_exception\",\"reason\":\"missing approved index\"},\"status\":404}"
+                    : "{\"error\":\"generic not found\"}";
+            byte[] response = body.getBytes(StandardCharsets.UTF_8);
+            exchange.getResponseHeaders().set("Content-Type", "application/json");
+            exchange.sendResponseHeaders(404, response.length);
             exchange.getResponseBody().write(response);
             exchange.close();
         });
