@@ -15,7 +15,7 @@ const {
 
 const reportsRoot = path.resolve(replayRoot, '..', 'reports')
 const statePath = path.join(ensureEvidenceRoot(), 'full-demo-state.json')
-const formalDatasetVersion = 'public-tech-2024-v3'
+const formalDatasetVersion = 'public-tech-2024-v4'
 
 function readState() {
   assert.equal(fs.existsSync(statePath), true, '请先运行 skill-lifecycle.cjs 生成首个 Candidate')

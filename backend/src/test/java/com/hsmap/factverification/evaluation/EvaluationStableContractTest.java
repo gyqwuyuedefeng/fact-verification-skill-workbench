@@ -34,7 +34,7 @@ import org.junit.jupiter.api.Test;
  */
 class EvaluationStableContractTest {
 
-    private static final String DATASET_VERSION = "public-tech-2024-v3";
+    private static final String DATASET_VERSION = "public-tech-2024-v4";
 
     /**
      * 测试场景：系统已有当前 Stable，但请求仍按首次建版只提交 BASELINE 与 Candidate。

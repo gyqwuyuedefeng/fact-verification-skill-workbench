@@ -57,10 +57,10 @@
   "rejectedPreToolChoiceEvaluationId": "884bdd4f-34dc-475a-9f6a-4b721cf7dfbc",
   "rejectedPreToolChoiceEvaluationReason": "旧批次仍使用动态 Skill 决策且模型可跳过主体工具；已改为冻结 Skill 确定性注入，并用 AgentScope 原生 tool_choice 强制首轮 resolve_company。旧批次只作失败历史，不用于 Stable。",
   "rejectedPreToolChoiceEvaluationArchive": "../reports/rejected/884bdd4f-pre-tool-choice-runtime",
-  "formalInitialEvaluationId": "bc9638c9-6737-4736-ac93-77e09295a40f",
+  "formalInitialEvaluationId": "2cd5ad24-bddd-4a32-87f0-2252cbf9a2b8",
   "formalInitialEvaluation": {
-    "id": "bc9638c9-6737-4736-ac93-77e09295a40f",
-    "datasetVersion": "public-tech-2024-v3",
+    "id": "2cd5ad24-bddd-4a32-87f0-2252cbf9a2b8",
+    "datasetVersion": "public-tech-2024-v4",
     "gateStatus": "PASS",
     "metrics": {
       "BASELINE": {
@@ -122,7 +122,7 @@
     }
   },
   "initialStable": {
-    "versionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+    "versionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
     "release": {
       "revision": 1,
       "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
@@ -135,13 +135,13 @@
     }
   },
   "optimizedCandidate": {
-    "id": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+    "id": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
     "skillKey": "company-material-fact-check",
-    "version": "v0.1.0+ac02b84ce433",
-    "parentVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+    "version": "v0.1.0+673be6877e99",
+    "parentVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
     "status": "CANDIDATE",
-    "contentHash": "ac02b84ce4338bfdea243fefaf1c148e4ed90948defaeef5e0a4172fada86154",
-    "changeSummary": "修复正向存在性主张空结果误判为冲突",
+    "contentHash": "673be6877e998837fda9ac417638175b4e032bcdc60bd4ab04ede30f3d06edc1",
+    "changeSummary": "补强正向存在性空结果与地址空白归一化规则",
     "createdAt": "2026-08-12T21:08:41.319447Z",
     "frozenAt": "2026-08-12T21:08:41.768778103Z"
   },
@@ -260,15 +260,15 @@
   },
   "previousFormalThreeEvaluationId": "589d49fe-f2d9-4e38-8d25-fca6051a6af9",
   "previousFormalThreeEvaluationReason": "Agent 运行时新增一次结构化输出纠正重试，运行时 hash 已变化；旧 PASS 只作历史，重新执行同条件评测。",
-  "formalThreeEvaluationId": "dd376d88-21d2-4566-9e6f-16addf4e29d4",
+  "formalThreeEvaluationId": "c5ce810d-93b3-4f6e-9c07-52b0f0faa045",
   "formalThreeEvaluation": {
-    "id": "dd376d88-21d2-4566-9e6f-16addf4e29d4",
+    "id": "c5ce810d-93b3-4f6e-9c07-52b0f0faa045",
     "gateStatus": "PASS",
     "metrics": {
       "BASELINE": {
         "accuracy": {
-          "value": 0.8666666666666667,
-          "numerator": 26,
+          "value": 0.23333333333333334,
+          "numerator": 7,
           "denominator": 30
         },
         "stability": {
@@ -282,37 +282,37 @@
           "denominator": 30
         },
         "humanInterventionRate": {
-          "value": 0.23333333333333334,
-          "numerator": 7,
+          "value": 0.8,
+          "numerator": 24,
           "denominator": 30
         }
       },
-      "b9824010-ee1b-4cea-be32-a7e732297a8c": {
-        "accuracy": {
-          "value": 0.9333333333333333,
-          "numerator": 28,
-          "denominator": 30
-        },
-        "stability": {
-          "value": 1,
-          "numerator": 10,
-          "denominator": 10
-        },
-        "completionRate": {
-          "value": 1,
-          "numerator": 30,
-          "denominator": 30
-        },
-        "humanInterventionRate": {
-          "value": 0.23333333333333334,
-          "numerator": 7,
-          "denominator": 30
-        }
-      },
-      "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40": {
+      "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc": {
         "accuracy": {
           "value": 0.9,
           "numerator": 27,
+          "denominator": 30
+        },
+        "stability": {
+          "value": 1,
+          "numerator": 10,
+          "denominator": 10
+        },
+        "completionRate": {
+          "value": 1,
+          "numerator": 30,
+          "denominator": 30
+        },
+        "humanInterventionRate": {
+          "value": 0.26666666666666666,
+          "numerator": 8,
+          "denominator": 30
+        }
+      },
+      "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90": {
+        "accuracy": {
+          "value": 1,
+          "numerator": 30,
           "denominator": 30
         },
         "stability": {
@@ -334,23 +334,23 @@
     },
     "comparison": {
       "comparable": true,
-      "leftVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
-      "rightVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
-      "evaluationRunId": "dd376d88-21d2-4566-9e6f-16addf4e29d4",
+      "leftVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
+      "rightVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
+      "evaluationRunId": "c5ce810d-93b3-4f6e-9c07-52b0f0faa045",
       "reasons": [],
       "metricDeltas": {
+        "humanInterventionRate": -0.0333,
         "completionRate": 0,
         "stability": 0,
-        "accuracy": 0.0333,
-        "humanInterventionRate": 0
+        "accuracy": 0.1
       },
       "sampleOutcomes": {
-        "rightWins": 1,
-        "leftWins": 0,
-        "ties": 29
+        "ties": 27,
+        "rightWins": 3,
+        "leftWins": 0
       },
       "failureTypeChanges": {
-        "rightFailures": 2,
+        "rightFailures": 0,
         "leftFailures": 0
       }
     }

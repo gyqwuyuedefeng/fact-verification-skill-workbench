@@ -36,6 +36,8 @@ grep -Fq -- '--print-config' "$launcher" || fail '启动脚本尚未实现 --pri
 # 前端后台 PID 必须由子 shell 通过 exec 替换成真实 Vite 进程；否则 Ctrl+C 只会结束 npm 外壳并遗留监听端口。
 grep -Fq -- 'exec env CHOKIDAR_USEPOLLING=true ./node_modules/.bin/vite' "$launcher" \
   || fail '前端启动尚未把受管 PID 绑定到真实 Vite 进程'
+grep -Fq -- 'WORKBENCH_STORAGE_ROOT="$primary_project_root/data"' "$launcher" \
+  || fail 'worktree 启动尚未固定使用主仓库受管数据目录'
 [[ -f "$smoke_manifest" && -f "$smoke_dataset" ]] || fail '三条现场快速评测资产缺失'
 grep -Fq -- '"version": "public-tech-live-smoke-v1"' "$smoke_manifest" \
   || fail '快速评测清单版本不正确'
@@ -58,6 +60,7 @@ assert_contains "$wsl_output" 'START_MODE=wsl'
 assert_contains "$wsl_output" 'DB_ENDPOINT=127.0.0.1:45432/kjjr_inx_brain?currentSchema=test'
 assert_contains "$wsl_output" 'ES_ADDRESSES=127.0.0.1:29200,127.0.0.1:29201,127.0.0.1:29202'
 assert_contains "$wsl_output" 'MODEL_ENDPOINT=http://127.0.0.1:48080/v1/chat/completions'
+assert_contains "$wsl_output" "WORKBENCH_STORAGE_ROOT=$primary_project_root/data"
 
 expected_db_host="$(read_env_value DB_HOST)"
 expected_db_port="$(read_env_value DB_PORT)"

@@ -201,7 +201,7 @@ const metricColumns: Array<{ key: keyof CoreMetrics }> = [
               <label class="field-label" for="dataset-version">金标数据集</label>
               <select id="dataset-version" v-model="datasetVersion" data-test="dataset-version" class="text-input">
                 <option value="public-tech-live-smoke-v1">{{ evaluationDatasetLabel('public-tech-live-smoke-v1') }}</option>
-                <option value="public-tech-2024-v3">{{ evaluationDatasetLabel('public-tech-2024-v3') }}</option>
+                <option value="public-tech-2024-v4">{{ evaluationDatasetLabel('public-tech-2024-v4') }}</option>
               </select>
               <p class="dataset-release-hint" data-test="dataset-release-hint">{{ evaluationDatasetReleaseHint(datasetVersion) }}</p>
               <label class="field-label" for="stable-version">稳定版（STABLE）版本</label>

@@ -28,7 +28,7 @@ const stableVersions = computed(() => skillStore.versions.filter((version) => ve
 const eligibleEvaluations = computed(() => evaluationStore.history.filter((run) =>
   run.status === 'COMPLETED' &&
   run.gateStatus === 'PASS' &&
-  run.datasetVersion === 'public-tech-2024-v3' &&
+  run.datasetVersion === 'public-tech-2024-v4' &&
   run.sampleCount === 30 &&
   hasExactReleaseVariants(run.variants?.map((variant) => variant.identifier) ?? []),
 ))

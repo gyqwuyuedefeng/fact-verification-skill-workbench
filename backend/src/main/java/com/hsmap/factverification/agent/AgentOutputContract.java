@@ -13,7 +13,8 @@ public final class AgentOutputContract {
     /**
      * 返回不包含金标答案的固定输出说明。
      *
-     * <p>模板明确区分输入快照 blocks 与最终 claims，并规定工具失败时的失败关闭行为。调用方必须在其后提供本次运行元数据和材料快照。
+     * <p>模板只声明所有变体都必须遵守的结构合同与真实工具调用边界。主体消歧、主张归一化、空结果和证据判定等企业核验知识只能来自冻结
+     * Skill；否则 BASELINE 也会提前获得专用能力，破坏同条件对照的唯一变量。
      */
     public static String instruction() {
         return """
@@ -36,34 +37,24 @@ public final class AgentOutputContract {
                   "explanation":"结论及依据",
                   "requiresHumanIntervention":true
                 }
-                materialLocator 必须复制输入已有 locator；可保留其中 page、sectionPath、paragraph、tableRow、slide、
-                textBlock、sheet、cellRange、lineStart、lineEnd，但不要增加其他字段。
-                normalizedClaim.metric 必须逐字使用下列最小规范词表之一，禁止翻译成中文或自造近义词：
+                materialLocator 可保留 page、sectionPath、paragraph、tableRow、slide、textBlock、sheet、cellRange、
+                lineStart、lineEnd；不要增加其他字段。
+                normalizedClaim.metric 必须使用下列固定枚举之一：
                 unifiedSocialCreditCode、revenue、intellectualProperty、riskRecordAbsence、
                 enterpriseRelationship、administrativePenalty、registeredAddress、legalRepresentative。
-                材料写“截至本次证据检索”或没有自然年度的当前工商/存在性事实时，period 必须为 CURRENT；
-                明确年份、日期或未来期间时逐字保留该 YYYY、YYYY-MM-DD 或其他期间文本。
                 normalizedClaim.operator 只能是 EQUALS、GREATER_THAN、GREATER_OR_EQUAL、LESS_THAN、
                 LESS_OR_EQUAL、RANGE、EXISTS 之一。
-                归一化主张只描述材料原文，不是对工具证据的改写；不得改写 operator、value 或 unit，即使改写后语义近似。
-                “存在至少一条知识产权/关系/处罚记录”必须使用对应 metric、period=CURRENT、
-                operator=EXISTS、value=true、unit=null，不得改成数量大于等于 1。
-                “某年不存在风险记录”使用 metric=riskRecordAbsence、原年份、operator=EQUALS、value=true、unit=null。
-                金额主张保留材料原数值与原单位；证据单位换算只用于比较，不得回写 normalizedClaim。
-                中文地址的字符间无语义空白应去除，其他文本值不得改写。
                 subject 唯一定位后为 {"companyId":"...","companyName":"...","unifiedSocialCreditCode":null}，
                 否则必须为 null。
                 只要材料含有明确企业名称或统一社会信用代码，就必须实际调用 resolve_company；主体唯一后还必须按事实类型
                 实际调用一个对应证据工具。未调用工具时禁止声称工具不可用、查询失败或没有记录，也禁止直接根据模型记忆给出结论。
+                工具失败、主体不唯一或证据不足时必须使用 INSUFFICIENT、空 evidence、
+                requiresHumanIntervention=true，并在 riskFlags 与 explanation 说明原因。
                 status 只能是 VERIFIED、CONFLICT、INSUFFICIENT。
                 VERIFIED 必须至少包含一条企业证据工具返回的 evidence，且 evidence 必须包含 source、dataset、recordId、
                 observedAt、content；source 必须固定为 HS_ENTERPRISE_ES；content 必须是 JSON 对象，禁止输出概括文字字符串。应从工具 evidence 引用中复制
                 source、dataset、recordId、observedAt，并从同一工具返回的 items 中选择对应 recordId 的原始对象作为 content；
                 不得自行概括、编造或把材料自身当作 evidence。
-                工具失败、主体不唯一、期间不匹配或证据覆盖不足时必须使用 INSUFFICIENT、空 evidence、
-                requiresHumanIntervention=true，并在 riskFlags 与 explanation 说明原因。
-                特别是“不存在”“没有”“从未”等否定性主张：查询结果为空或某期间未命中，不能证明“不存在”；
-                除非工具明确提供覆盖范围完整的证明，否则必须输出 INSUFFICIENT 并要求人工介入。
                 """;
     }
 }

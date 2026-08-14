@@ -66,11 +66,6 @@ async function main() {
   const diagnostics = collectPageDiagnostics(page)
   try {
     await gotoRoute(page, '/admin/evaluations')
-    assert.equal(await page.locator('[data-test="initial-stable"]').isChecked(), false)
-    assert.equal(await page.locator('[data-test="start-evaluation"]').isDisabled(), true)
-    await page.locator('[data-test="stable-id"]').fill(stableId)
-    await page.locator('[data-test="candidate-id"]').fill(candidateId)
-    assert.match(await page.locator('[data-test="start-evaluation"]').innerText(), /BASELINE \+ Stable \+ Candidate/)
 
     let evaluation
     if (state.formalThreeEvaluationId) {
@@ -81,6 +76,11 @@ async function main() {
         await page.locator('button.history-row').filter({ hasText: evaluation.id.slice(0, 8) }).click()
       }
     } else {
+      // 已完成批次的报告重放不依赖版本当前仍处于 CANDIDATE；只有新建批次才校验并选择当前下拉项。
+      assert.equal(await page.locator('[data-test="start-evaluation"]').isDisabled(), true)
+      await page.locator('[data-test="stable-version"]').selectOption(stableId)
+      await page.locator('[data-test="candidate-version"]').selectOption(candidateId)
+      assert.match(await page.locator('[data-test="start-evaluation"]').innerText(), /BASELINE \+ Stable \+ Candidate/)
       const responsePromise = page.waitForResponse((response) => response.request().method() === 'POST'
         && /\/api\/evaluations$/.test(response.url()))
       await page.locator('[data-test="start-evaluation"]').click()
@@ -97,7 +97,7 @@ async function main() {
       await page.locator('button.history-row').filter({ hasText: evaluation.id.slice(0, 8) }).click()
     }
 
-    assert.equal(evaluation.datasetVersion, 'public-tech-2024-v3')
+    assert.equal(evaluation.datasetVersion, 'public-tech-2024-v4')
     assert.equal(evaluation.sampleCount, 30)
     assert.deepEqual(evaluation.variants.map((item) => item.identifier), ['BASELINE', stableId, candidateId])
     assert.deepEqual(evaluation.runManifest.modelParameters, {
@@ -110,7 +110,7 @@ async function main() {
     })
     assert.equal(Object.keys(evaluation.metrics).length, 3)
     assert.equal(evaluation.gateStatus, 'PASS', `优化 Candidate 必须通过门禁：${JSON.stringify(evaluation.gateReasons)}`)
-    await page.getByText('GATE PASS', { exact: true }).waitFor({ state: 'visible' })
+    await page.getByText('GATE 通过（PASS）', { exact: true }).waitFor({ state: 'visible' })
     await page.waitForFunction(() => document.querySelectorAll('.sample-drilldown').length === 30)
     assert.equal(await page.locator('.metric-row:not(.metric-head)').count(), 3)
 
@@ -143,8 +143,8 @@ async function main() {
     fs.writeFileSync(path.join(reportsRoot, 'candidate-version-card.json'), `${JSON.stringify(candidateCard, null, 2)}\n`)
 
     await page.locator('[data-test="evaluation-tab-version"]').click()
-    const summaryInput = page.locator('.inline-query input')
-    await summaryInput.fill(stableId)
+    const summaryInput = page.locator('[data-test="summary-version"]')
+    await summaryInput.selectOption(stableId)
     await Promise.all([
       page.waitForResponse((response) => response.url().endsWith(`/api/evaluations/version-summary/${stableId}`)),
       page.getByRole('button', { name: '汇总', exact: true }).click(),
@@ -152,16 +152,17 @@ async function main() {
     await page.getByText('参评次数').waitFor({ state: 'visible' })
     assert.equal(Number(await page.locator('.summary-strip strong').first().innerText()) >= 2, true, 'Stable 应关联首轮和三版本评测')
 
-    await summaryInput.fill(candidateId)
+    await summaryInput.selectOption(candidateId)
     await Promise.all([
       page.waitForResponse((response) => response.url().endsWith(`/api/evaluations/version-summary/${candidateId}`)),
       page.getByRole('button', { name: '汇总', exact: true }).click(),
     ])
-    await page.locator('.summary-strip').getByText(evaluation.id, { exact: true }).waitFor({ state: 'visible' })
+    // 候选版同时参加快速与正式评测时，汇总区会出现多条运行记录；只要求当前正式批次至少出现一次。
+    await page.locator('.summary-strip').getByText(evaluation.id, { exact: true }).first().waitFor({ state: 'visible' })
 
     await page.locator('[data-test="evaluation-tab-compare"]').click()
-    await page.locator('.compare-query input').nth(0).fill(stableId)
-    await page.locator('.compare-query input').nth(1).fill(candidateId)
+    await page.locator('[data-test="compare-left-version"]').selectOption(stableId)
+    await page.locator('[data-test="compare-right-version"]').selectOption(candidateId)
     const [comparisonResponse] = await Promise.all([
       page.waitForResponse((response) => response.url().includes('/api/evaluations/comparison?')),
       page.getByRole('button', { name: '对比', exact: true }).click(),
@@ -178,7 +179,7 @@ async function main() {
     await page.locator('button.history-row').filter({ hasText: initialEvaluationId.slice(0, 8) }).click()
     await page.getByText(initialEvaluationId.slice(0, 8), { exact: true }).waitFor({ state: 'visible' })
     await page.locator('button.history-row').filter({ hasText: evaluation.id.slice(0, 8) }).click()
-    await page.getByText('GATE PASS', { exact: true }).waitFor({ state: 'visible' })
+    await page.getByText('GATE 通过（PASS）', { exact: true }).waitFor({ state: 'visible' })
 
     state.formalThreeEvaluation = {
       id: evaluation.id,

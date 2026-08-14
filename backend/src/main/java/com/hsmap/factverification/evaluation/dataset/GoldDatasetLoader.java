@@ -19,7 +19,7 @@ import java.util.Map;
  */
 public final class GoldDatasetLoader {
 
-    public static final String FORMAL_DATASET_VERSION = "public-tech-2024-v3";
+    public static final String FORMAL_DATASET_VERSION = "public-tech-2024-v4";
     public static final String LIVE_SMOKE_DATASET_VERSION = "public-tech-live-smoke-v1";
     public static final int MIN_GATE_SAMPLE_COUNT = 30;
     public static final int LIVE_SMOKE_SAMPLE_COUNT = 3;

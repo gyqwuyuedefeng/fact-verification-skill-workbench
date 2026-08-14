@@ -60,7 +60,7 @@ class ReleaseEvaluationBindingTest {
         when(evaluations.findBootstrap(EVALUATION_ID))
                 .thenReturn(Optional.of(new BootstrapEvaluation(
                         EVALUATION_ID,
-                        "public-tech-2024-v3",
+                        "public-tech-2024-v4",
                         30,
                         "PASS",
                         Set.of("BASELINE", CANDIDATE_ID.toString()))));
@@ -81,9 +81,9 @@ class ReleaseEvaluationBindingTest {
     }
 
     /**
-     * 测试场景：快速三条评测或数量被篡改的正式版本评测虽然显示 PASS，却被用于注册 Candidate。
+     * 测试场景：快速三条评测、已淘汰 v3 或数量被篡改的 v4 正式评测虽然显示 PASS，却被用于注册 Candidate。
      * 前置条件：变体完整包含 BASELINE、当前 Stable 与 Candidate，隔离数据集发布资格这一项缺陷。
-     * 期望结果：两种记录都以 EVALUATION_NOT_RELEASE_ELIGIBLE 失败，并且不写版本卡或发布事件。
+     * 期望结果：三种记录都以 EVALUATION_NOT_RELEASE_ELIGIBLE 失败，并且不写版本卡或发布事件。
      * 断言重点：页面标签不是安全边界，后端必须同时精确校验正式版本标识与三十条样本数。
      */
     @Test
@@ -92,7 +92,8 @@ class ReleaseEvaluationBindingTest {
 
         assertNotReleaseEligible(
                 new BootstrapEvaluation(EVALUATION_ID, "public-tech-live-smoke-v1", 3, "PASS", variants));
-        assertNotReleaseEligible(new BootstrapEvaluation(EVALUATION_ID, "public-tech-2024-v3", 3, "PASS", variants));
+        assertNotReleaseEligible(new BootstrapEvaluation(EVALUATION_ID, "public-tech-2024-v3", 30, "PASS", variants));
+        assertNotReleaseEligible(new BootstrapEvaluation(EVALUATION_ID, "public-tech-2024-v4", 3, "PASS", variants));
     }
 
     /** 构造一次完整注册边界并证明不合格评测在任何版本状态写入前被拒绝。 */

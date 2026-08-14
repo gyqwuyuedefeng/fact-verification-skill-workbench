@@ -78,6 +78,13 @@ class InitialStableBootstrapTest {
                         .isEqualTo("EVALUATION_NOT_RELEASE_ELIGIBLE"));
 
         store.datasetVersion = "public-tech-2024-v3";
+        store.sampleCount = 30;
+        assertThatThrownBy(() -> service.initialize(VERSION_ID, EVALUATION_ID, "历史 v3 不能发布", "reviewer"))
+                .isInstanceOfSatisfying(ServiceException.class, exception -> assertThat(exception.getCode())
+                        .isEqualTo("EVALUATION_NOT_RELEASE_ELIGIBLE"));
+
+        store.datasetVersion = "public-tech-2024-v4";
+        store.sampleCount = 3;
         assertThatThrownBy(() -> service.initialize(VERSION_ID, EVALUATION_ID, "错误数量不能发布", "reviewer"))
                 .isInstanceOfSatisfying(ServiceException.class, exception -> assertThat(exception.getCode())
                         .isEqualTo("EVALUATION_NOT_RELEASE_ELIGIBLE"));
@@ -89,7 +96,7 @@ class InitialStableBootstrapTest {
         private boolean hasCurrentRelease;
         private boolean appended;
         private String candidateStatus = "CANDIDATE";
-        private String datasetVersion = "public-tech-2024-v3";
+        private String datasetVersion = "public-tech-2024-v4";
         private int sampleCount = 30;
         private String gateStatus = "PASS";
         private Set<String> variantIdentifiers = Set.of("BASELINE", VERSION_ID.toString());

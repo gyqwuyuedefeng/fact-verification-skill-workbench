@@ -55,3 +55,7 @@ description: Verify explicit factual claims in authorized company materials agai
 ## 空结果判定补强
 
 - 对“存在至少一条”的正向存在性主张，对应证据工具返回 `total=0` 只表示当前索引未返回直接支持，不构成反证；必须输出 `INSUFFICIENT`、`evidence=[]` 并请求人工介入，不能输出 `CONFLICT`。
+
+## 地址文本归一化补强
+
+- 中文注册地址比较时，`claimText` 仍逐字保留材料原文；`normalizedClaim.value` 删除字符之间无语义的 Unicode 空白后再与证据比较。例如门牌号中用于排版的空格不属于地址值，不得因保留该空格造成规范化字段失配。

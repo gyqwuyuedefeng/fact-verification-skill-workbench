@@ -16,7 +16,7 @@
 | 影子 FAIL 按钮材料 | `../demo-materials/05-影子灰度-金山办公风险事实.md` | 演示否定性风险覆盖边界和人工 FAIL，不把影子结果当金标准确率 |
 | 现场快速评测集 | `../live-smoke-dataset.jsonl` + `../live-smoke-manifest.json` | 管理评测页默认选择；3 条真实样本，完整调用模型、Agent、MCP 与 ES，但不能注册或发布 |
 | 管理员固定评测集 | `../dataset.jsonl` | 管理评测页自动读取，不需要逐条上传 |
-| 评测集版本与固定顺序 | `../manifest.json` | 锁定 `public-tech-2024-v3`、30 条样本及运行顺序；v1/v2 缺陷资产已单独归档 |
+| 评测集版本与固定顺序 | `../manifest.json` | 锁定 `public-tech-2024-v4`、30 条样本及运行顺序；v3 与更早缺陷资产只保留历史审计 |
 
 ## 启动测试预览
 

@@ -174,7 +174,8 @@ public class VerificationRunRepository {
     /**
      * 管理页读取真实影子历史，并按同 ordinal 主张统计结论一致/差异。
      *
-     * <p>这是只读查询投影，不把没有金标的真实任务包装成准确率。
+     * <p>这是只读查询投影，不把没有金标的真实任务包装成准确率。FULL JOIN 前必须先把两侧分别限定为当前 SHADOW 与 PRIMARY；
+     * 如果直接连接整张 claim 表再过滤单侧，右表中的 SHADOW 主张会再次成为未匹配行，导致相同结论也被错误计入差异。
      */
     public List<ShadowRunRow> listShadowRuns() {
         return jdbcTemplate.query(
@@ -208,10 +209,9 @@ public class VerificationRunRepository {
                              count(*) filter (
                                  where pc.verification_status is distinct from sc.verification_status
                                )::integer as difference_count
-                        from test.claim sc
-                        full join test.claim pc
-                          on pc.run_id = p.id and pc.ordinal = sc.ordinal
-                       where sc.run_id = s.id or sc.run_id is null
+                        from (select * from test.claim where run_id = s.id) sc
+                        full join (select * from test.claim where run_id = p.id) pc
+                          on pc.ordinal = sc.ordinal
                   ) diff on true
                  where s.run_type = 'SHADOW'
                  order by s.created_at desc, s.id

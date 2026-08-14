@@ -115,6 +115,6 @@ bash evals/competition-replay/start-test-preview.sh intranet
 
 “管理评测”的“发起新评测”默认选择 `public-tech-live-smoke-v1`，它恰好包含三条从正式集逐字段复用的样本：科大讯飞 2024 年营收（预期 VERIFIED）、科大讯飞否定性风险断言（预期 INSUFFICIENT）和用友网络 2023 年营收冲突（预期 CONFLICT）。它真实调用同一公司模型、Agent、MCP、ES、证据冻结和评分器，适合现场快速确认链路；但前端不会把它列入发布评测下拉框，后端也会以 `EVALUATION_NOT_RELEASE_ELIGIBLE` 拒绝注册。
 
-要注册 Candidate 或建立初始 Stable，必须主动切换到 `public-tech-2024-v3`“正式完整评测（30 条）”，且该批次必须已完成并通过门禁。“查看历史结果”仅执行 GET 读取，不会重新运行评测，也不会覆盖“发起新评测”的当前选择。
+要注册 Candidate 或建立初始 Stable，必须主动切换到 `public-tech-2024-v4`“正式完整评测（30 条）”，且该批次必须已完成并通过门禁。旧 `public-tech-2024-v3` 只保留历史结果用于审计，不能新建或发布。“查看历史结果”仅执行 GET 读取，不会重新运行评测，也不会覆盖“发起新评测”的当前选择。
 
 只有真实公司模型、测试 PG 和 dev 同源 ES 的内网联调完成后，才能把 `evals/reports/` 中的报告作为比赛最终证据。

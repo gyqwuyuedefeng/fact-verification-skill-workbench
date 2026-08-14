@@ -122,6 +122,7 @@ print_effective_config() {
   printf 'ES_ADDRESSES=%s\n' "$es_addresses"
   printf 'ES_SCHEMA=%s\n' "$es_schema"
   printf 'MODEL_ENDPOINT=%s\n' "$model_url"
+  printf 'WORKBENCH_STORAGE_ROOT=%s/data\n' "$primary_project_root"
   printf 'MCP_ENDPOINT=http://127.0.0.1:19091/mcp\n'
   printf 'BACKEND_ENDPOINT=http://127.0.0.1:19090\n'
   printf 'FRONTEND_ENDPOINT=http://127.0.0.1:15173\n'
@@ -187,6 +188,7 @@ env \
   LOCAL_MODEL_ID="$local_model_id" \
   LOCAL_MODEL_API_KEY="$local_model_api_key" \
   MCP_BASE_URL='http://127.0.0.1:19091' \
+  WORKBENCH_STORAGE_ROOT="$primary_project_root/data" \
   /usr/lib/jvm/java-17-openjdk-amd64/bin/java \
   -jar backend/target/fact-verification-backend.jar \
   --spring.profiles.active=test \

@@ -36,7 +36,8 @@ const metricLabels: Record<string, string> = {
 
 const evaluationDatasetLabels: Record<string, string> = {
   'public-tech-live-smoke-v1': '现场快速评测（3 条）',
-  'public-tech-2024-v3': '正式完整评测（30 条）',
+  'public-tech-2024-v3': '历史正式评测（30 条，仅查看）',
+  'public-tech-2024-v4': '正式完整评测（30 条）',
 }
 
 /** 为状态增加中文业务名称，同时保留接口原始英文值以便追溯。 */
@@ -57,9 +58,13 @@ export function evaluationDatasetLabel(value: string): string {
 
 /** 快速集只用于确认链路和观察指标，正式三十条才具有注册与发布资格。 */
 export function evaluationDatasetReleaseHint(value: string): string {
-  return value === 'public-tech-2024-v3'
-    ? '正式完整评测：完成且门禁通过后，可作为发布门禁，用于注册候选版和后续发布。'
-    : '现场快速评测：真实调用模型、Agent、MCP 与 ES，但不可用于注册或发布。'
+  if (value === 'public-tech-2024-v4') {
+    return '正式完整评测：完成且门禁通过后，可作为发布门禁，用于注册候选版和后续发布。'
+  }
+  if (value === 'public-tech-live-smoke-v1') {
+    return '现场快速评测：真实调用模型、Agent、MCP 与 ES，但不可用于注册或发布。'
+  }
+  return '历史评测：保留原始结果用于审计，不再允许新建、注册或发布。'
 }
 
 /** 冻结版本选项保留状态、语义化版本和短 ID，避免仅靠中文名称选择错误版本。 */

@@ -23,7 +23,7 @@ import org.junit.jupiter.api.io.TempDir;
  * 测试目的：证明 BASELINE、Stable、Candidate 不会各自回退到模型服务默认值，并能在报告中复查同一固定参数。
  * 覆盖范围：AgentScope GenerateOptions 的温度、top-p、seed、输出上限、思考模式、并行工具开关，以及 Run Manifest
  * 的参数持久化和哈希锁定。
- * 前置条件：只构造本地模型适配器与真实 v3 数据集，不发起公司模型、MCP 或数据库请求。
+ * 前置条件：只构造本地模型适配器与真实正式数据集，不发起公司模型、MCP 或数据库请求。
  */
 class AgentFixedParametersTest {
 
@@ -139,5 +139,23 @@ class AgentFixedParametersTest {
                     .doesNotContain("先加载 company-material-fact-check Skill");
             assertThat(agent.getToolkit().getToolNames()).doesNotContain("load_skill_through_path");
         }
+    }
+
+    /**
+     * 测试场景：BASELINE 与专用 Skill 使用同一输出结构，但只有 Skill 获得企业核验领域知识。
+     * 前置条件：公共提示会同时进入 BASELINE、Stable 和 Candidate，任何写在其中的判断规则都会污染对照变量。
+     * 期望结果：公共提示只声明 JSON 结构、枚举和工具真实性边界，不包含否定主张、空结果或具体证据判定策略。
+     * 断言重点：不能让 BASELINE 在未加载 Skill 时提前得到本应由初始/优化 Skill 提供的能力。
+     */
+    @Test
+    void keepsDomainDecisionRulesOutOfSharedOutputContract() {
+        assertThat(AgentOutputContract.instruction())
+                .contains("claims 必须是数组")
+                .contains("status 只能是 VERIFIED、CONFLICT、INSUFFICIENT")
+                .doesNotContain("否定性主张")
+                .doesNotContain("查询结果为空")
+                .doesNotContain("某年不存在风险记录")
+                .doesNotContain("存在至少一条知识产权/关系/处罚记录")
+                .doesNotContain("中文地址的字符间无语义空白应去除");
     }
 }

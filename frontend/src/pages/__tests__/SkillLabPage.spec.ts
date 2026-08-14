@@ -490,6 +490,65 @@ describe('SkillLabPage', () => {
     vi.unstubAllGlobals()
   })
 
+  it('加载合法预置后清除上一轮 references 校验错误', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useSkillStore()
+    const demoStore = useDemoStore()
+    store.currentDraft = {
+      id: 'draft-clear-error', skillKey: 'company-material-fact-check', version: null, parentVersionId: null,
+      status: 'DRAFT', contentHash: null, changeSummary: '原始说明',
+      createdAt: '2026-08-13T00:00:00Z', frozenAt: null,
+    }
+    store.selectedContent = {
+      id: 'draft-clear-error', parentVersionId: null, status: 'DRAFT', editable: true,
+      skillMarkdown: '# 原始 Skill', references: [], changeSummary: '原始说明',
+    }
+    store.error = 'references 必须是合法 JSON 数组'
+    demoStore.skillPresets = [{
+      id: '01-initial', label: '初始稳定版', skillName: 'company-material-fact-check',
+      skillMarkdown: '# 合法初始 Skill', references: [],
+    }]
+    vi.spyOn(store, 'load').mockResolvedValue()
+    vi.spyOn(store, 'saveDraft').mockResolvedValue()
+    vi.spyOn(window, 'confirm').mockReturnValue(true)
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+
+    await wrapper.get('[data-test="skill-preset"]').setValue('01-initial')
+    await wrapper.get('[data-test="apply-skill-preset"]').trigger('click')
+
+    expect(store.error).toBeNull()
+    expect(wrapper.text()).not.toContain('references 必须是合法 JSON 数组')
+  })
+
+  it('手工修正 references 并保存成功后清除旧校验错误', async () => {
+    const pinia = createPinia()
+    setActivePinia(pinia)
+    const store = useSkillStore()
+    store.currentDraft = {
+      id: 'draft-save-clear-error', skillKey: 'company-material-fact-check', version: null, parentVersionId: null,
+      status: 'DRAFT', contentHash: null, changeSummary: '修正引用',
+      createdAt: '2026-08-13T00:00:00Z', frozenAt: null,
+    }
+    store.selectedContent = {
+      id: 'draft-save-clear-error', parentVersionId: null, status: 'DRAFT', editable: true,
+      skillMarkdown: '# 合法 Skill', references: [], changeSummary: '修正引用',
+    }
+    store.error = 'references 必须是合法 JSON 数组'
+    vi.spyOn(store, 'load').mockResolvedValue()
+    const saveDraft = vi.spyOn(store, 'saveDraft').mockResolvedValue()
+    const wrapper = mount(SkillLabPage, { global: { plugins: [pinia] } })
+
+    const editors = wrapper.findAll('textarea.code-editor')
+    await editors[0]!.setValue('# 合法 Skill')
+    await editors[1]!.setValue('[]')
+
+    await wrapper.findAll('button').find((button) => button.text().includes('保存草稿'))!.trigger('click')
+
+    expect(saveDraft).toHaveBeenCalled()
+    expect(store.error).toBeNull()
+  })
+
   it('冻结版本不展示预置加载控件', () => {
     const pinia = createPinia()
     setActivePinia(pinia)

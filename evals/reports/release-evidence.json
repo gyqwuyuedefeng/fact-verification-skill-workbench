@@ -1,113 +1,101 @@
 {
-  "generatedAt": "2026-08-12T21:20:01.503Z",
-  "evaluationId": "589d49fe-f2d9-4e38-8d25-fca6051a6af9",
-  "oldStableId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
-  "candidateId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+  "generatedAt": "2026-08-14T15:11:01.213Z",
+  "evaluationId": "c5ce810d-93b3-4f6e-9c07-52b0f0faa045",
+  "initialStableId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
+  "optimizedVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
   "shadowSummary": {
-    "total": 2,
-    "differentClaims": 254,
-    "completed": 2,
-    "fail": 1,
-    "pass": 1
+    "pass": 1,
+    "total": 1,
+    "differentClaims": 0,
+    "completed": 1,
+    "fail": 0,
+    "accuracyAvailable": false
   },
   "shadowTasks": [
     {
-      "taskId": "c2116e3d-190e-4024-a20f-c3da1396c7e6",
-      "primaryRunId": "c78aca4f-8999-4485-8968-027f8c28f70d"
-    },
-    {
-      "taskId": "1714747b-5dce-48dd-91bb-8e9b69c3302e",
-      "primaryRunId": "3d5f7095-27d1-4e5e-ac8e-a25a621bc411"
+      "taskId": "00c46786-d339-4d1c-9724-960f42b21697",
+      "fileName": "message.txt",
+      "companyNames": "浙江核新同花顺网络信息股份有限公司",
+      "primaryRunId": "bf035ff5-bb55-42bd-baed-a8fe3285f9b1",
+      "shadowRunId": "c82b6d46-b941-49e6-8a45-f449207e1b05",
+      "stableVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
+      "candidateVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
+      "reviewStatus": "PASS",
+      "agreementCount": 1,
+      "differenceCount": 0,
+      "createdAt": "2026-08-14T12:50:15.524177Z"
     }
   ],
-  "postPromotionTask": {
-    "taskId": "5779398d-2278-45b3-b72b-58ac1c87dff0",
-    "primaryRunId": "663c4dfd-eaf9-4143-9e4b-31b8a5cfbf07"
-  },
-  "postRollbackTask": {
-    "taskId": "312bb110-df9f-4e97-bf96-b2ffd46b3f81",
-    "primaryRunId": "ba4bbd11-b1dc-4c94-8134-1b7f76bf3055"
-  },
   "current": {
-    "revision": 7,
-    "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+    "revision": 6,
+    "stableVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
     "candidateVersionId": null,
-    "previousStableVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+    "previousStableVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
     "shadowEnabled": false,
     "action": "ROLLBACK",
-    "reason": "现场证明可一键恢复上一版 Stable",
-    "createdAt": "2026-08-12T21:19:51.810545Z"
+    "reason": "现场演示完成：恢复评测最优版本为正式稳定版",
+    "createdAt": "2026-08-14T13:11:29.122819Z"
   },
   "history": [
     {
-      "revision": 7,
-      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "revision": 6,
+      "stableVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
       "candidateVersionId": null,
-      "previousStableVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "previousStableVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
       "shadowEnabled": false,
       "action": "ROLLBACK",
-      "reason": "现场证明可一键恢复上一版 Stable",
-      "createdAt": "2026-08-12T21:19:51.810545Z"
-    },
-    {
-      "revision": 6,
-      "stableVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
-      "candidateVersionId": null,
-      "previousStableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
-      "shadowEnabled": false,
-      "action": "PROMOTE",
-      "reason": "离线门禁通过且真实材料已有人工 PASS，晋升新 Stable",
-      "createdAt": "2026-08-12T21:19:37.553718Z"
+      "reason": "现场演示完成：恢复评测最优版本为正式稳定版",
+      "createdAt": "2026-08-14T13:11:29.122819Z"
     },
     {
       "revision": 5,
-      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
-      "candidateVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
-      "previousStableVersionId": null,
-      "shadowEnabled": true,
-      "action": "SHADOW_START",
-      "reason": "复演前重新开启影子并保留已审核历史",
-      "createdAt": "2026-08-12T21:19:37.422429Z"
+      "stableVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
+      "candidateVersionId": null,
+      "previousStableVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
+      "shadowEnabled": false,
+      "action": "ROLLBACK",
+      "reason": "现场演示：验证一键回滚至上一版稳定版",
+      "createdAt": "2026-08-14T13:09:44.169988Z"
     },
     {
       "revision": 4,
-      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
-      "candidateVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
-      "previousStableVersionId": null,
+      "stableVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
+      "candidateVersionId": null,
+      "previousStableVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
       "shadowEnabled": false,
-      "action": "SHADOW_STOP",
-      "reason": "验证停止影子后不再创建后台运行",
-      "createdAt": "2026-08-12T21:19:37.251471Z"
+      "action": "PROMOTE",
+      "reason": "同条件评测通过，进入真实材料影子验证",
+      "createdAt": "2026-08-14T13:08:24.333265Z"
     },
     {
       "revision": 3,
-      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
-      "candidateVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "stableVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
+      "candidateVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
       "previousStableVersionId": null,
       "shadowEnabled": true,
       "action": "SHADOW_START",
-      "reason": "开启后台 Candidate 影子，不改变用户 Stable 正式答案",
-      "createdAt": "2026-08-12T21:18:00.530537Z"
+      "reason": "同条件评测通过，进入真实材料影子验证",
+      "createdAt": "2026-08-14T12:46:15.785681Z"
     },
     {
       "revision": 2,
-      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
-      "candidateVersionId": "b9824010-ee1b-4cea-be32-a7e732297a8c",
+      "stableVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
+      "candidateVersionId": "48a30585-26c5-4d76-b3c6-4d6fc3cf6c90",
       "previousStableVersionId": null,
       "shadowEnabled": false,
       "action": "REGISTER",
-      "reason": "三版本同条件评测通过，进入真实材料影子观察",
-      "createdAt": "2026-08-12T21:16:09.755842Z"
+      "reason": "同条件评测通过，进入真实材料影子验证",
+      "createdAt": "2026-08-14T12:46:04.762065Z"
     },
     {
       "revision": 1,
-      "stableVersionId": "fc91c90c-4c10-4fc1-9c9e-1fa5caa9ea40",
+      "stableVersionId": "3d537f34-d5ad-4d2f-9ebb-9c00a35241fc",
       "candidateVersionId": null,
       "previousStableVersionId": null,
       "shadowEnabled": false,
       "action": "INITIALIZE",
-      "reason": "首轮 BASELINE 对照门禁通过，建立初始 Stable",
-      "createdAt": "2026-08-12T21:05:52.441866Z"
+      "reason": "同条件评测通过，进入真实材料影子验证",
+      "createdAt": "2026-08-14T12:30:40.031425Z"
     }
   ]
 }

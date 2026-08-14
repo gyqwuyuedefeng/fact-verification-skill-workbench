@@ -19,7 +19,7 @@ async function main() {
   const evaluationId = state.formalInitialEvaluation?.id || state.formalInitialEvaluationId
   assert(candidateId, '缺少首个 Candidate ID')
   assert(evaluationId, '缺少首轮评测 ID')
-  assert.equal(state.formalInitialEvaluation?.datasetVersion, 'public-tech-2024-v3', '只能使用正式 v3 评测建立 Stable')
+  assert.equal(state.formalInitialEvaluation?.datasetVersion, 'public-tech-2024-v4', '只能使用正式 v4 评测建立 Stable')
   assert.equal(state.formalInitialEvaluation?.gateStatus, 'PASS', '只有正式 v3 的 GATE PASS 才能建立初始 Stable')
 
   const { browser, page } = await openBrowser()

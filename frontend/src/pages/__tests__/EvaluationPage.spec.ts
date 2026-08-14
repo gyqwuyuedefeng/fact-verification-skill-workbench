@@ -26,7 +26,7 @@ function version(id: string, status: SkillVersion['status']): SkillVersion {
 function run(id: string, status: EvaluationRun['status']): EvaluationRun {
   return {
     id,
-    datasetVersion: 'public-tech-2024-v3',
+    datasetVersion: 'public-tech-2024-v4',
     datasetHash: null,
     sampleCount: 30,
     variants: null,
@@ -174,12 +174,12 @@ describe('EvaluationPage', () => {
 
     expect((wrapper.get('[data-test="stable-version"]').element as HTMLSelectElement).value).toBe('stable-v1')
     expect(wrapper.get('[data-test="stable-version"]').text()).not.toContain('首次建立')
-    await wrapper.get('[data-test="dataset-version"]').setValue('public-tech-2024-v3')
+    await wrapper.get('[data-test="dataset-version"]').setValue('public-tech-2024-v4')
     await wrapper.find('[data-test="candidate-version"]').setValue('candidate-v2')
     await wrapper.find('[data-test="start-evaluation"]').trigger('click')
     await flushPromises()
 
-    expect(start).toHaveBeenCalledWith('public-tech-2024-v3', [
+    expect(start).toHaveBeenCalledWith('public-tech-2024-v4', [
       'BASELINE',
       'stable-v1',
       'candidate-v2',
@@ -215,7 +215,8 @@ describe('EvaluationPage', () => {
     expect(dataset.text()).toContain('正式完整评测（30 条）')
     expect(wrapper.get('[data-test="dataset-release-hint"]').text()).toContain('不可用于注册或发布')
 
-    await dataset.setValue('public-tech-2024-v3')
+    expect(dataset.text()).not.toContain('public-tech-2024-v3')
+    await dataset.setValue('public-tech-2024-v4')
     expect(wrapper.get('[data-test="dataset-release-hint"]').text()).toContain('可作为发布门禁')
   })
 
@@ -524,7 +525,7 @@ describe('EvaluationPage', () => {
       .mockResolvedValueOnce(response([])))
 
     const staleRefresh = store.refreshEvaluation('evaluation-old')
-    await store.start('public-tech-2024-v3', ['BASELINE', 'candidate-v1'])
+    await store.start('public-tech-2024-v4', ['BASELINE', 'candidate-v1'])
 
     expect(store.refreshing).toBe(false)
     expect(store.busy).toBe(false)

@@ -30,7 +30,7 @@ class SkillPresetContractTest {
     private static final Map<String, Map<String, String>> SOURCE_FILE_HASHES = sourceFileHashes();
     private static final Map<String, String> FROZEN_CONTENT_HASHES = Map.of(
             "01-initial", "6ddd7dd413ab70db4c045f64d78aa2c121f96ad0d5ab6ea5f7ac4cb4caf826ff",
-            "02-improved", "ac02b84ce4338bfdea243fefaf1c148e4ed90948defaeef5e0a4172fada86154",
+            "02-improved", "673be6877e998837fda9ac417638175b4e032bcdc60bd4ab04ede30f3d06edc1",
             "03-regression", "29b2fbaaf69ddb754212b08e94452ad21574fa93e5f066600688ee1fefce2b1e");
 
     @TempDir
@@ -102,6 +102,36 @@ class SkillPresetContractTest {
                         PRESET_ROOT.resolve("02-improved/company-material-fact-check/SKILL.md")));
     }
 
+    /**
+     * 测试场景：从零演示的初始与优化 Skill 必须表达通用、可解释的渐进能力，而不是样本答案表。
+     * 前置条件：两版使用同一公司模型、工具、证据快照和输出 Schema，优化版只能在初始版之上增加规则。
+     * 期望结果：初始版负责基础核验规则，优化版新增正向存在性空结果失败关闭；两版均不出现样本 ID 或固定企业 ID。
+     * 断言重点：严格提升必须来自可迁移规则，禁止通过识别比赛样本或企业编码硬编码预期状态。
+     */
+    @Test
+    void presetsDescribeProgressiveGeneralRulesWithoutEvaluationAnswerLeakage() throws Exception {
+        String initial = Files.readString(
+                PRESET_ROOT.resolve("01-initial/company-material-fact-check/SKILL.md"), StandardCharsets.UTF_8);
+        String improved = Files.readString(
+                PRESET_ROOT.resolve("02-improved/company-material-fact-check/SKILL.md"), StandardCharsets.UTF_8);
+
+        assertThat(initial)
+                .contains("否定性风险")
+                .doesNotContain("正向存在性主张")
+                .doesNotContain("sampleId")
+                .doesNotContain("iflytek-")
+                .doesNotContain("d4a31cf230562c787dd67e171125b462");
+        assertThat(improved)
+                .contains(initial.stripTrailing())
+                .contains("正向存在性主张")
+                .contains("total=0")
+                .contains("中文注册地址")
+                .contains("Unicode 空白")
+                .doesNotContain("sampleId")
+                .doesNotContain("iflytek-")
+                .doesNotContain("d4a31cf230562c787dd67e171125b462");
+    }
+
     /** 固化三个已核实源快照的逐文件摘要；LinkedHashMap 同时保留报告时的人类可读阶段顺序。 */
     private static Map<String, Map<String, String>> sourceFileHashes() {
         Map<String, Map<String, String>> hashes = new LinkedHashMap<>();
@@ -116,7 +146,7 @@ class SkillPresetContractTest {
         hashes.put(
                 "02-improved",
                 Map.of(
-                        "SKILL.md", "679f745178e22641e3ec2cddb7fc3e756a256a77be111c97ff8c76d2812dfb70",
+                        "SKILL.md", "5f2b44a1293682c7ecee1e5fb71c1c4e7dad5175f3620c67b6f28c5ccd419da5",
                         "references/claim-normalization.md",
                                 "c69218b6a12dfb0fef29199d263bf3c018cc2bbce54beffd8b214ac45d74b3fa",
                         "references/evidence-rules.md",

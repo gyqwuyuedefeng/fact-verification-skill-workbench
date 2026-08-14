@@ -7,7 +7,7 @@ import org.junit.jupiter.api.Test;
 /**
  * 被测试对象：发送给公司千问的统一核验输出契约提示。
  * 测试目的：保证普通任务和评测任务都能向通用模型明确传达可持久化 JSON 结构，而不是只引用模型不可见的 schema。
- * 覆盖范围：顶层字段、主张字段、规范指标词表、三种状态、工具失败降级和禁止复制文档 blocks 的约束。
+ * 覆盖范围：顶层字段、主张字段、最小指标枚举、三种状态、工具失败降级和禁止复制文档 blocks 的约束。
  * 前置条件：真正的 JSON Schema 仍是最终失败关闭门禁，本提示只负责让模型知道应生成什么。
  */
 class AgentOutputContractTest {
@@ -40,16 +40,17 @@ class AgentOutputContractTest {
                 .contains("必须实际调用 resolve_company")
                 .contains("未调用工具时禁止声称工具不可用、查询失败或没有记录")
                 .contains("content 必须是 JSON 对象，禁止输出概括文字字符串")
-                .contains("查询结果为空或某期间未命中，不能证明“不存在”")
                 .contains("source 必须固定为 HS_ENTERPRISE_ES")
                 .contains("禁止把文档快照的 blocks")
+                // 空结果、期间覆盖等企业核验知识由 Skill 提供，不能泄漏给 BASELINE。
+                .doesNotContain("查询结果为空或某期间未命中，不能证明“不存在”")
                 .doesNotContain("expectedStatus", "manualEvidence");
     }
 
     /**
      * 测试场景：同一事实可能被模型表述为中文指标名、英文缩写或近义词。
      * 前置条件：评分器按金标的 metric 精确比较，BASELINE 与 Skill 必须共享同一词表而不能各自猜测。
-     * 期望结果：输出契约固定本期八个指标值，并要求模型逐字复制其中一个值。
+     * 期望结果：输出契约固定本期八个结构枚举，但不注入企业核验中的归一化诀窍。
      * 断言重点：词表覆盖正式三十条数据中的全部指标，且不泄漏任何样本期望状态。
      */
     @Test
@@ -64,24 +65,25 @@ class AgentOutputContractTest {
                         "administrativePenalty",
                         "registeredAddress",
                         "legalRepresentative")
-                .contains("必须逐字使用")
+                .contains("必须使用下列固定枚举之一")
+                .doesNotContain("禁止翻译成中文或自造近义词")
                 .doesNotContain("expectedStatus", "manualEvidence");
     }
 
     /**
-     * 测试场景：模型为了解释“存在至少一条”或单位换算，擅自改写材料主张的归一化五元组。
-     * 前置条件：证据值可以用于比较，但 normalizedClaim 仍必须表达材料本身而不是工具返回值。
-     * 期望结果：统一提示明确禁止语义等价改写，并固定存在性、否定性和金额主张的表达边界。
-     * 断言重点：BASELINE 与所有 Skill 共享同一规则，避免评分差异来自输出口径漂移。
+     * 测试场景：统一输出契约被误写入存在性、否定性或金额换算等领域诀窍。
+     * 前置条件：BASELINE 与 Skill 只共享持久化 JSON 结构，企业事实归一化能力必须由冻结 Skill 提供。
+     * 期望结果：公共提示不出现可直接提高核验分数的领域规则。
+     * 断言重点：三版本差异确实来自 Skill，而不是 BASELINE 提前获得了优化 Skill 的知识。
      */
     @Test
-    void preservesTheMaterialClaimInsteadOfRewritingItFromEvidence() {
+    void keepsDomainNormalizationRulesInsideTheSkill() {
         assertThat(AgentOutputContract.instruction())
-                .contains("归一化主张只描述材料原文")
-                .contains("不得改写 operator、value 或 unit")
-                .contains("存在至少一条")
-                .contains("operator=EXISTS、value=true、unit=null")
-                .contains("证据单位换算只用于比较")
+                .doesNotContain("归一化主张只描述材料原文")
+                .doesNotContain("不得改写 operator、value 或 unit")
+                .doesNotContain("存在至少一条")
+                .doesNotContain("operator=EXISTS、value=true、unit=null")
+                .doesNotContain("证据单位换算只用于比较")
                 .doesNotContain("expectedStatus", "manualEvidence");
     }
 }

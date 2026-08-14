@@ -107,7 +107,7 @@ class DatasetContractTest {
     /**
      * 测试场景：金标主体必须使用六工具返回的内部 companyId，不能误用股票代码。
      * 前置条件：五家评测企业已经通过真实 Streamable HTTP 主体工具完成唯一映射。
-     * 期望结果：同一家企业的全部样本都使用本次真实工具复核得到的 32 位内部编码，且数据集升级为不可覆盖的 v3。
+     * 期望结果：同一家企业的全部样本都使用本次真实工具复核得到的 32 位内部编码，且数据集升级为不可覆盖的 v4。
      * 断言重点：否则模型严格复制工具证据仍会被评分器判错，评测准确率不具备业务含义。
      */
     @Test
@@ -122,14 +122,54 @@ class DatasetContractTest {
                             return left;
                         }));
 
-        assertThat(dataset.version()).isEqualTo("public-tech-2024-v3");
+        assertThat(dataset.version()).isEqualTo("public-tech-2024-v4");
         assertThat(actual)
                 .containsAllEntriesOf(Map.of(
                         "科大讯飞股份有限公司", "ef865a606f84bf2dd88486482840eab6",
                         "北京金山办公软件股份有限公司", "5533db99386bc889fc52566b68ad2172",
                         "深信服科技股份有限公司", "bd62524db001604e9a816abd1938434d",
-                        "浪潮电子信息产业股份有限公司", "05e321fdd4e87be116c0919054176d78",
+                        "浪潮电子信息产业股份有限公司", "d4a31cf230562c787dd67e171125b462",
                         "用友网络科技股份有限公司", "d08a6dee3c5fd0859f97d393affa5c4a"));
+    }
+
+    /**
+     * 测试场景：旧 v3 中已经无法由当前只读企业证据链复现的八条金标完成版本化修订。
+     * 前置条件：当前 ES 已把浪潮规范主体收敛到新 companyId，风险工具因索引缺失对正向处罚主张返回空结果。
+     * 期望结果：六条浪潮样本统一使用当前主体；财务和知识产权支持性主张可复现，两个处罚存在性主张失败关闭为证据不足。
+     * 断言重点：这里只允许调整已实际取证确认的漂移字段，不能为了制造版本差距而改变未漂移样本或写入 Skill 提示。
+     */
+    @Test
+    void formalV4AlignsEightDriftedSamplesWithCurrentReadOnlyEvidence() {
+        GoldDataset dataset = loader.load(Path.of("../evals/manifest.json"));
+        Map<String, com.hsmap.factverification.evaluation.dataset.GoldSample> samples =
+                dataset.samples().stream().collect(Collectors.toMap(sample -> sample.sampleId(), sample -> sample));
+
+        assertThat(List.of(
+                        "inspur-basic",
+                        "inspur-finance",
+                        "inspur-ip",
+                        "inspur-risk",
+                        "inspur-relation",
+                        "inspur-unit-conflict"))
+                .allSatisfy(sampleId -> assertThat(samples.get(sampleId).expectedSubject().path("companyId").asText())
+                        .isEqualTo("d4a31cf230562c787dd67e171125b462"));
+        assertThat(samples.get("inspur-finance").material().path("text").asText())
+                .startsWith("浪潮电子信息产业股份有限公司")
+                .doesNotContain("浪潮信息 2024");
+        assertThat(samples.get("inspur-finance").expectedStatus()).isEqualTo("VERIFIED");
+        assertThat(samples.get("inspur-finance").manualEvidence().get(0).recordId())
+                .isEqualTo("e650b6c0923f2b69b3955a90720c2302");
+        assertThat(samples.get("inspur-ip").expectedStatus()).isEqualTo("VERIFIED");
+        assertThat(samples.get("inspur-ip").manualEvidence().get(0).recordId())
+                .isEqualTo("3f5ad9ca859fdfe7e8884e0951f293e4");
+        assertThat(samples.get("inspur-relation").manualEvidence().get(0).recordId())
+                .isEqualTo("82c155ba1d55d87a1ca9756f8c863d9b");
+        assertThat(samples.get("sangfor-risk").expectedStatus()).isEqualTo("INSUFFICIENT");
+        assertThat(samples.get("yonyou-risk").expectedStatus()).isEqualTo("INSUFFICIENT");
+        assertThat(samples.get("sangfor-risk").manualEvidence().get(0).dataset())
+                .isEqualTo("mcp-query-scope");
+        assertThat(samples.get("yonyou-risk").manualEvidence().get(0).dataset())
+                .isEqualTo("mcp-query-scope");
     }
 
     /**

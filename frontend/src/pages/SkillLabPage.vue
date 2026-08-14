@@ -44,6 +44,7 @@ function applySkillPreset() {
   const preset = demoStore.skillPresets.find((item) => item.id === selectedPresetId.value)
   if (!preset) return
   if (!globalThis.confirm(`确认加载“${preset.label}”？这只会替换本地编辑器内容，仍需手工保存和冻结。`)) return
+  store.error = null
   skillMarkdown.value = preset.skillMarkdown
   referencesJson.value = JSON.stringify(preset.references, null, 2)
   changeSummary.value = presetChangeSummary(preset.id)
@@ -71,6 +72,7 @@ async function save() {
     store.error = 'references 必须是合法 JSON 数组'
     return
   }
+  store.error = null
   await store.saveDraft(skillMarkdown.value, references, changeSummary.value)
 }
 
