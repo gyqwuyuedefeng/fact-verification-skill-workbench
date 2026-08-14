@@ -2,28 +2,28 @@
 
 ## 当前复测
 
-`当前复测/` 对应评测批次 `dd376d88-21d2-4566-9e6f-16addf4e29d4`，是当前 Agent 运行时在相同三版本上的最新真实评测：
+`当前复测/` 对应评测批次 `c5ce810d-93b3-4f6e-9c07-52b0f0faa045`，是当前 Agent 运行时在相同三版本上的最新真实评测：
 
 - `evaluation-report.md`：适合人工阅读的四项指标和八项门禁。
 - `evaluation-report.json`：30 条样本、三个变体评分、原始输出和单样本下钻数据。
 - `run-manifest.json`：数据集、模型参数、工具、证据、运行时和输出结构的同条件哈希。
 - `failed-samples.json`：当前所有变体仍未答对的样本明细。
 
-## 发布时版本记录
+## 当前发布记录
 
-`发布时版本记录/` 保留 Skill 实际注册与发布时绑定的历史证据：
+`发布时版本记录/` 保留本轮 Skill 实际注册与发布的证据：
 
-- 初始 Stable 版本卡绑定评测 `bc9638c9-6737-4736-ac93-77e09295a40f`。
-- 优化 Candidate 版本卡绑定评测 `589d49fe-f2d9-4e38-8d25-fca6051a6af9`。
-- 发布证据记录 Candidate 注册、影子人工 PASS/FAIL、晋升新 Stable 和回滚旧 Stable。
+- 初始 Stable 版本卡绑定正式评测 `2cd5ad24-bddd-4a32-87f0-2252cbf9a2b8`。
+- 优化 Candidate 版本卡绑定正式评测 `c5ce810d-93b3-4f6e-9c07-52b0f0faa045`。
+- 发布证据记录 Candidate 注册、真实材料影子人工 PASS、晋升、回滚旧版以及恢复评测最优版。
 
-运行时后来增加了“结构化输出不合法时重新取证并纠正”的稳定性修复，所以又生成了当前复测。历史版本卡不覆盖，当前复测也不伪造为当时的发布评测；两类材料共同证明“最新效果”和“真实版本链路”。
+当前评测报告、版本卡和发布证据均来自 2026-08-14 从零复演后的同一版本链路；旧 v3 批次不进入本提交目录。
 
 ## 阅读顺序
 
 1. 先读 `当前复测/evaluation-report.md` 看最新成绩。
 2. 再读 `当前复测/run-manifest.json` 看同条件锁。
-3. 打开 `当前复测/evaluation-report.json` 查看 `inspur-ip` 单样本。
+3. 打开 `当前复测/evaluation-report.json` 查看 `sangfor-risk`、`yonyou-risk` 或 `yonyou-basic` 的修复对比。
 4. 最后读 `发布时版本记录/release-evidence.md` 和两张版本卡看发布闭环。
 
 ## 演示截图
