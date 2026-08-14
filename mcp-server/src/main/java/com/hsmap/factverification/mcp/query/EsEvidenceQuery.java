@@ -150,7 +150,7 @@ public final class EsEvidenceQuery implements LiveEvidenceQuery {
                                     Map.of("match_phrase", Map.of("company_name", value)),
                                     Map.of("match_phrase", Map.of("name_before", value)),
                                     Map.of("term", Map.of("company_sname.keyword", value)),
-                                    Map.of("term", Map.of("uni_code.keyword", value))),
+                                    Map.of("term", Map.of("uni_code", value))),
                             "minimum_should_match",
                             1));
         } else if (policy.indexName().equals("ads_lget_patent_info")
@@ -162,9 +162,11 @@ public final class EsEvidenceQuery implements LiveEvidenceQuery {
                             "path",
                             "org_info_list",
                             "query",
-                            Map.of("term", Map.of("org_info_list.company_code.keyword", value))));
+                            Map.of("term", Map.of("org_info_list.company_code", value))));
         } else {
-            query = Map.of("bool", Map.of("filter", List.of(Map.of("term", Map.of("company_code.keyword", value)))));
+            // 当前 dev 同源索引把 company_code 直接映射为 keyword，并不存在 company_code.keyword 子字段。
+            // 对不存在的子字段执行 term 查询只会静默返回 0 条，导致真实财务证据被误判为缺失。
+            query = Map.of("bool", Map.of("filter", List.of(Map.of("term", Map.of("company_code", value)))));
         }
         Map<String, Object> body = new LinkedHashMap<>();
         body.put("size", policy.limit());

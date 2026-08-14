@@ -78,6 +78,8 @@ class EsEvidenceQueryTest {
             String request = capturedBody.get().replaceAll("\\s+", "");
             assertThat(request)
                     .contains("\"size\":10")
+                    .contains("\"company_code\":\"company-1\"")
+                    .doesNotContain("company_code.keyword")
                     .contains("\"sort\"")
                     .contains("\"report_year\"")
                     .contains("\"order\":\"desc\"")
