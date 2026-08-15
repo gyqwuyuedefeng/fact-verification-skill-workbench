@@ -1,12 +1,23 @@
-# 事实核验 Skill 竞赛提交材料
+# 企业材料事实核验 Skill 工作台——AI 竞赛最终提交材料
+
+- **队名：** 火石验真官
+- **参赛成员：** 高永强、高翔宇、钱旭
+- **可运行应用：** https://yet-newest-lisa-phenomenon.trycloudflare.com
+- **访问支持：** 如无法连接，请联系管理员：18358585270
+- **公开代码：** https://github.com/gyqwuyuedefeng/fact-verification-skill-workbench/tree/feat/003-zero-demo-e2e
+- **备用视频文件名：** `高永强-高翔宇-钱旭-企业材料事实核验Skill工作台-3分钟演示.mp4`
+- **提交邮箱：** heq@hsmap.com
+- **最晚时间：** 2026 年 8 月 16 日中午 12:00
 
 本目录逐项对应竞赛邮件要求：
 
-1. 可运行应用：提交前把 Cloudflared HTTPS 地址填入 `06-邮件正文模板.md`；本地应用保持 WSL 预览与 Windows Cloudflared 同时运行。
+1. 可运行应用/Agent/Skill：使用上方 HTTPS 地址；评审时保持 WSL 预览与 Windows Cloudflared 同时运行。
 2. 一页业务说明：`01-业务说明.md`。
 3. 测试数据与评价结果：`02-测试数据与评价结果.md`、`测试数据/`、`评价结果/`。
 4. 使用说明与三分钟备用视频：`03-使用说明.md`、`04-三分钟视频脚本.md`。
 5. 赛后 30 天落地计划：`05-赛后30天落地计划.md`。
+
+发送邮件时附加本目录生成的最终 ZIP，并将录制完成的 MP4 作为第二个附件；不要把带真实运行附件的本机演示状态快照发送到无关渠道。
 
 ## 本轮有效事实
 
